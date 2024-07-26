@@ -1,0 +1,58 @@
+{
+  "name": "@snap/ts-inject",
+  "version": "0.1.0",
+  "description": "100% typesafe dependency injection framework for TypeScript projects",
+  "license": "MIT",
+  "author": "Snap Inc.",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    "types": "./dist/types/index.d.ts",
+    "node": "./dist/cjs/index.js",
+    "require": "./dist/cjs/index.js",
+    "default": "./dist/esm/index.js"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "styleguide": "npm run lint && npm run format:check",
+    "styleguide:fix": "npm run lint:fix && npm run format:fix",
+    "lint:fix": "npm run lint --fix",
+    "lint": "eslint --ext .ts ./src",
+    "format:check": "prettier -l *",
+    "format:fix": "npm run format:check -- --write || exit 0",
+    "test": "jest",
+    "test:watch": "jest --clearCache && jest --watch",
+    "compile": "tsc -b ./tsconfig.cjs.json ./tsconfig.esm.json ./tsconfig.types.json",
+    "docs": "typedoc src/index.ts",
+    "build": "rm -rf dist && rm -rf docs && npm run compile && npm run docs"
+  },
+  "files": [
+    "docs",
+    "dist"
+  ],
+  "keywords": [
+    "TypeScript",
+    "typesafe",
+    "Dependency Injection",
+    "DI",
+    "Inversion of Control",
+    "IoC",
+    "Snap",
+    "Snapchat"
+  ],
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@typescript-eslint/eslint-plugin": "^7.16.1",
+    "@typescript-eslint/parser": "^7.16.1",
+    "eslint": "^8.56.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-prefer-arrow": "1.2.3",
+    "jest": "^29.7.0",
+    "prettier": "^3.3.3",
+    "ts-jest": "^29.2.3",
+    "ts-node": "^10.9.2",
+    "typedoc": "^0.26.4",
+    "typescript": "^5.5.3"
+  }
+}

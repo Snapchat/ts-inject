@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "downlevelIteration": true,
+    "module": "commonjs",
+    "noEmit": false,
+    "outDir": "./dist/cjs",
+    "target": "ES2022"
+  }
+}
