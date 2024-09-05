@@ -316,9 +316,7 @@ describe("Container", () => {
       let value: string = childContainerWithOverride.get("value");
       expect(value).toBe("two");
 
-      const partialContainer = new PartialContainer({
-        value: Injectable("value", () => "three"),
-      });
+      const partialContainer = new PartialContainer({}).provides(Injectable("value", () => "three"));
       childContainerWithOverride = parentContainer.provides(partialContainer);
       value = childContainerWithOverride.get("value");
       expect(value).toBe("three");
