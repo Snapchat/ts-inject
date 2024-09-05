@@ -305,6 +305,29 @@ describe("Container", () => {
       let childContainerWithOverride = parentContainer.providesValue("value", 2);
       expect(childContainerWithOverride.get("service")).toBe(1);
     });
+
+    test("overriding with a different type changes resulting container's type", () => {
+      const parentContainer = Container.providesValue("value", 1);
+      let childContainerWithOverride = parentContainer.providesValue("value", "two");
+
+      // @ts-expect-error should be failing to compile as the type of the container has changed
+      let numberValue: number = childContainerWithOverride.get("value");
+
+      let value: string = childContainerWithOverride.get("value");
+      expect(value).toBe("two");
+
+      const partialContainer = new PartialContainer({
+        value: Injectable("value", () => "three"),
+      });
+      childContainerWithOverride = parentContainer.provides(partialContainer);
+      value = childContainerWithOverride.get("value");
+      expect(value).toBe("three");
+
+      let extraContainer = Container.fromObject({ value: "four" });
+      childContainerWithOverride = parentContainer.provides(extraContainer);
+      value = childContainerWithOverride.get("value");
+      expect(value).toBe("four");
+    });
   });
 
   describe("when making a copy of the Container", () => {
