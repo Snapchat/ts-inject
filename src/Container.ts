@@ -1,7 +1,7 @@
 import { isMemoized, memoize } from "./memoize";
 import type { Memoized } from "./memoize";
 import { PartialContainer } from "./PartialContainer";
-import type { AddService, InjectableClass, InjectableFunction, TokenType, ValidTokens } from "./types";
+import type { AddService, AddServices, InjectableClass, InjectableFunction, TokenType, ValidTokens } from "./types";
 import { ConcatInjectable } from "./Injectable";
 import { entries } from "./entries";
 
@@ -344,7 +344,7 @@ export class Container<Services = {}> {
     // `this` type, we ensure this Container can provide all the Dependencies required by the PartialContainer.
     this: Container<FulfilledDependencies>,
     container: PartialContainer<AdditionalServices, Dependencies>
-  ): Container<Services & AdditionalServices>;
+  ): Container<AddServices<Services, AdditionalServices>>;
 
   /**
    * Merges services from another `Container` into this container, creating a new `Container` instance.
@@ -362,7 +362,9 @@ export class Container<Services = {}> {
    * @returns A new `Container` instance that combines services from this container with those from the
    *          provided container, with services from the provided container taking precedence in case of conflicts.
    */
-  provides<AdditionalServices>(container: Container<AdditionalServices>): Container<Services & AdditionalServices>;
+  provides<AdditionalServices>(
+    container: Container<AdditionalServices>
+  ): Container<AddServices<Services, AdditionalServices>>;
 
   /**
    * Registers a new service in this Container using an `InjectableFunction`. This function defines how the service
@@ -400,7 +402,7 @@ export class Container<Services = {}> {
       return new Container({
         ...this.factories,
         ...factories,
-      } as unknown as MaybeMemoizedFactories<Services & AdditionalServices>);
+      } as unknown as MaybeMemoizedFactories<AddServices<Services, AdditionalServices>>);
     }
     return this.providesService(fnOrContainer);
   }

@@ -71,7 +71,30 @@ export type ServicesFromInjectables<Injectables extends readonly AnyInjectable[]
 // will see the mapped type instead of the AddService type alias. This produces better hints.
 export type AddService<ParentServices, Token extends TokenType, Service> = ParentServices extends any
   ? // A mapped type produces better, more concise type hints than an intersection type.
-    { [K in keyof ParentServices | Token]: K extends keyof ParentServices ? ParentServices[K] : Service }
+    {
+      [K in keyof ParentServices | Token]: K extends keyof ParentServices
+        ? K extends Token
+          ? Service
+          : ParentServices[K]
+        : Service;
+    }
+  : never;
+
+/**
+ * Same as AddService above, but is merging multiple services at once. Services types override those of the parent.
+ */
+// Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
+// will see the mapped type instead of the AddService type alias. This produces better hints.
+export type AddServices<ParentServices, Services> = ParentServices extends any
+  ? Services extends any
+    ? {
+        [K in keyof Services | keyof ParentServices]: K extends keyof Services
+          ? Services[K]
+          : K extends keyof ParentServices
+            ? ParentServices[K]
+            : never;
+      }
+    : never
   : never;
 
 /**
