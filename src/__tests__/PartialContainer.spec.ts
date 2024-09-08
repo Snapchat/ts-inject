@@ -152,6 +152,43 @@ describe("PartialContainer", () => {
       });
     });
 
+    describe("provide service using provideValue", () => {
+      const dependenciesContainer = Container.provides(Injectable("TestService", () => "old service"));
+
+      describe("and the new Service does not override", () => {
+        const partialContainer = new PartialContainer({}).providesValue("NewTestService", "new service");
+        expect(dependenciesContainer.provides(partialContainer).get("NewTestService")).toEqual("new service");
+      });
+
+      describe("and the new Service does override", () => {
+        const partialContainer = new PartialContainer({}).providesValue("TestService", "new service");
+        expect(dependenciesContainer.provides(partialContainer).get("TestService")).toEqual("new service");
+      });
+    });
+
+    describe("provide service using provideClass", () => {
+      const dependenciesContainer = Container.provides(Injectable("TestService", () => "old service"));
+
+      class NewTestService {
+        static dependencies = ["TestService"] as const;
+        constructor(public testService: string) {}
+      }
+
+      describe("and the new Service does not override", () => {
+        const partialContainer = new PartialContainer({}).providesClass("NewTestService", NewTestService);
+        expect(dependenciesContainer.provides(partialContainer).get("NewTestService")).toBeInstanceOf(NewTestService);
+      });
+
+      describe("and the new Service does override", () => {
+        const partialContainer = new PartialContainer({})
+          .providesValue("TestService", "old service")
+          .providesClass("TestService", NewTestService);
+        let testService = dependenciesContainer.provides(partialContainer).get("TestService");
+        expect(testService).toBeInstanceOf(NewTestService);
+        expect(testService.testService).toEqual("old service");
+      });
+    });
+
     describe("provided by an existing Container", () => {
       const dependenciesContainer = Container.provides(Injectable("TestService", () => "old service"));
       let combinedContainer: Container<{ TestService: string }>;

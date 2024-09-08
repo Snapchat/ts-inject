@@ -1,4 +1,4 @@
-import type { InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
+import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
 
 /**
  * Creates an Injectable factory function designed for services without dependencies.
@@ -97,6 +97,27 @@ export function Injectable(
   const factory = (...args: any[]) => fn(...args);
   factory.token = token;
   factory.dependencies = dependencies;
+  return factory;
+}
+
+/**
+ * Creates an Injectable factory function for an InjectableClass.
+ *
+ * @param token Token identifying the Service.
+ * @param cls InjectableClass to instantiate.
+ */
+export function ClassInjectable<Services, Token extends TokenType, const Tokens extends readonly TokenType[], Service>(
+  token: Token,
+  cls: InjectableClass<Services, Service, Tokens>
+): InjectableFunction<Services, Tokens, Token, Service>;
+
+export function ClassInjectable(
+  token: TokenType,
+  cls: InjectableClass<any, any, readonly TokenType[]>
+): InjectableFunction<any, readonly TokenType[], TokenType, any> {
+  const factory = (...args: any[]) => new cls(...args);
+  factory.token = token;
+  factory.dependencies = cls.dependencies;
   return factory;
 }
 

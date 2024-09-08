@@ -2,7 +2,17 @@ import { entries } from "./entries";
 import { memoize } from "./memoize";
 import type { Memoized } from "./memoize";
 import type { Container } from "./Container";
-import type { AddService, InjectableFunction, ServicesFromTokenizedParams, TokenType, ValidTokens } from "./types";
+import type {
+  AddService,
+  InjectableClass,
+  InjectableFunction,
+  ServicesFromTokenizedParams,
+  TokenType,
+  ValidTokens,
+} from "./types";
+import { ClassInjectable, Injectable } from "./Injectable";
+
+type ConstructorReturnType<T> = T extends new (...args: any) => infer C ? C : any;
 
 // Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
 // will see the mapped type instead of the AddDependencies type alias. This produces better hints.
@@ -77,7 +87,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * The InjectableFunction contains metadata specifying the Token by which the created Service will be known, as well
    * as an ordered list of Tokens to be resolved and provided to the InjectableFunction as arguments.
    *
-   * This dependencies are allowed to be missing from the PartialContainer, but these dependencies are maintained as a
+   * The dependencies are allowed to be missing from the PartialContainer, but these dependencies are maintained as a
    * parameter of the returned PartialContainer. This allows `[Container.provides]` to type check the dependencies and
    * ensure they can be provided by the Container.
    *
@@ -102,6 +112,52 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
   > {
     return new PartialContainer({ ...this.injectables, [fn.token]: fn } as any);
   }
+
+  /**
+   * Create a new PartialContainer which provides the given value as a Service.
+   *
+   * Example:
+   * ```ts
+   * const partial = new PartialContainer({}).providesValue("value", 42);
+   * const value = Container.provides(partial).get("value");
+   * console.log(value); // 42
+   * ```
+   *
+   * @param token the Token by which the value will be known.
+   * @param value the value to be provided.
+   */
+  providesValue = <Token extends TokenType, Service>(token: Token, value: Service) =>
+    this.provides(Injectable(token, [], () => value));
+
+  /**
+   * Create a new PartialContainer which provides the given class as a Service, all of the class's dependencies will be
+   * resolved by the parent Container.
+   *
+   * Example:
+   * ```ts
+   * class Foo {
+   *  static dependencies = ['bar'] as const;
+   *  constructor(public bar: string) {}
+   * }
+   *
+   * const partial = new PartialContainer({}).providesClass("foo", Foo);
+   * const foo = Container.providesValue("bar", "bar value").provides(partial).get("foo");
+   * console.log(foo.bar); // "bar value"
+   * ```
+   *
+   * @param token the Token by which the class will be known.
+   * @param cls the class to be provided, must match the InjectableClass type.
+   */
+  providesClass = <
+    Class extends InjectableClass<any, any, any>,
+    AdditionalDependencies extends ConstructorParameters<Class>,
+    Tokens extends Class["dependencies"],
+    Service extends ConstructorReturnType<Class>,
+    Token extends TokenType,
+  >(
+    token: Token,
+    cls: Class
+  ) => this.provides<AdditionalDependencies, Tokens, Token, Service>(ClassInjectable(token, cls));
 
   /**
    * In order to create a [Container], the InjectableFunctions maintained by the PartialContainer must be memoized
