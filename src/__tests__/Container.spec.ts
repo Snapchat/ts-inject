@@ -1,3 +1,4 @@
+// eslint-disable-next-line max-classes-per-file
 import { Container } from "../Container";
 import { Injectable } from "../Injectable";
 import { PartialContainer } from "../PartialContainer";
