@@ -1,9 +1,14 @@
 {
   "name": "@snap/ts-inject",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "100% typesafe dependency injection framework for TypeScript projects",
   "license": "MIT",
   "author": "Snap Inc.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Snapchat/ts-inject.git"
+  },
+  "homepage": "https://snapchat.github.io/ts-inject/",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",
