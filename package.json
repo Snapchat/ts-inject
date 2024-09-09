@@ -6,8 +6,9 @@
   "author": "Snap Inc.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Snapchat/ts-inject.git"
+    "url": "git+https://github.com/Snapchat/ts-inject.git"
   },
+  "homepage": "https://snapchat.github.io/ts-inject/",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",
