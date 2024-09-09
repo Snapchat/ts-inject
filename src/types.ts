@@ -1,6 +1,6 @@
 import type { Container, ContainerToken } from "./Container";
 
-export type AsTuple<T> = T extends readonly any[] ? T : never;
+type AsTuple<T> = T extends readonly any[] ? T : never;
 
 type CorrespondingService<Services, Token extends ValidTokens<Services>> = Token extends ContainerToken
   ? Container<Services>
