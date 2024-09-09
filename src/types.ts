@@ -50,13 +50,11 @@ export type InjectableFunction<
   : never;
 
 export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly ValidTokens<Services>[]
-  ? ClassWithInjections<Services, Service, Tokens>
+  ? {
+      readonly dependencies: Tokens;
+      new (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
+    }
   : never;
-
-export interface ClassWithInjections<Services, Service, Tokens extends readonly ValidTokens<Services>[]> {
-  readonly dependencies: Tokens;
-  new (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
-}
 
 export type AnyInjectable = InjectableFunction<any, readonly TokenType[], TokenType, any>;
 
