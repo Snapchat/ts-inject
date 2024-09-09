@@ -89,7 +89,7 @@ db.save("user2"); // Log: Saving record: user2
 
 ### API Reference
 
-For comprehensive documentation of all ts-inject features and APIs, please refer to the [API Reference](https://github.sc-corp.net/pages/Snapchat/ts-inject/modules.html).
+For comprehensive documentation of all ts-inject features and APIs, please refer to the [API Reference](https://snapchat.github.io/ts-inject/).
 
 ## Contributing
 
