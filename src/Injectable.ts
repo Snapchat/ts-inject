@@ -103,6 +103,28 @@ export function Injectable(
 /**
  * Creates an Injectable factory function for an InjectableClass.
  *
+ * @example
+ * ```ts
+ * class InjectableClassService {
+ *     static dependencies = ["service"] as const;
+ *     constructor(public service: string) {}
+ *     public print(): string {
+ *          console.log(this.service);
+ *     }
+ * }
+ *
+ * let container = Container.provides("service", "service value")
+ *      .provides(ClassInjectable("classService", InjectableClassService));
+ *
+ * container.get("classService").print(); // prints "service value"
+ *
+ * // prefer using Container's provideClass method. Above is the equivalent of:
+ * container = Container.provides("service", "service value")
+ *     .providesClass("classService", InjectableClassService);
+ *
+ * container.get("classService").print(); // prints "service value"
+ * ```
+ *
  * @param token Token identifying the Service.
  * @param cls InjectableClass to instantiate.
  */

@@ -132,7 +132,7 @@ describe("PartialContainer", () => {
           () => {
             expect(() => {
               new Container({}).provides(containerWithService).get("TestService");
-            }).toThrow();
+            }).toThrow(/Could not find Service for Token "TestService"/);
 
             new Container({})
               .provides(Injectable("TestService", () => "old service from container"))
@@ -155,12 +155,12 @@ describe("PartialContainer", () => {
     describe("provide service using provideValue", () => {
       const dependenciesContainer = Container.provides(Injectable("TestService", () => "old service"));
 
-      describe("and the new Service does not override", () => {
+      test("and the new Service does not override", () => {
         const partialContainer = new PartialContainer({}).providesValue("NewTestService", "new service");
         expect(dependenciesContainer.provides(partialContainer).get("NewTestService")).toEqual("new service");
       });
 
-      describe("and the new Service does override", () => {
+      test("and the new Service does override", () => {
         const partialContainer = new PartialContainer({}).providesValue("TestService", "new service");
         expect(dependenciesContainer.provides(partialContainer).get("TestService")).toEqual("new service");
       });
@@ -176,10 +176,18 @@ describe("PartialContainer", () => {
 
       describe("and the new Service does not override", () => {
         const partialContainer = new PartialContainer({}).providesClass("NewTestService", NewTestService);
-        expect(dependenciesContainer.provides(partialContainer).get("NewTestService")).toBeInstanceOf(NewTestService);
+        test("fails if parent missing dependency", () => {
+          // @ts-expect-error should be a compile error because nothing provides "TestService"
+          expect(() => Container.provides(partialContainer).get("NewTestService")).toThrow(
+            /Could not find Service for Token "TestService"/
+          );
+        });
+        test("succeeds if parent has dependency", () => {
+          expect(dependenciesContainer.provides(partialContainer).get("NewTestService")).toBeInstanceOf(NewTestService);
+        });
       });
 
-      describe("and the new Service does override", () => {
+      test("and the new Service does override", () => {
         const partialContainer = new PartialContainer({})
           .providesValue("TestService", "old service")
           .providesClass("TestService", NewTestService);
