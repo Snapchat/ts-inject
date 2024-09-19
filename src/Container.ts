@@ -1,8 +1,8 @@
-import { isMemoized, memoize } from "./memoize";
 import type { Memoized } from "./memoize";
+import { isMemoized, memoize } from "./memoize";
 import { PartialContainer } from "./PartialContainer";
 import type { AddService, AddServices, InjectableClass, InjectableFunction, TokenType, ValidTokens } from "./types";
-import { ConcatInjectable } from "./Injectable";
+import { ClassInjectable, ConcatInjectable, Injectable } from "./Injectable";
 import { entries } from "./entries";
 
 type MaybeMemoizedFactories<Services> = {
@@ -408,13 +408,6 @@ export class Container<Services = {}> {
   }
 
   /**
-   * Create a new Container which provides a Service created by the given [InjectableClass].
-   *
-   * @param token - A unique Token which will correspond to the created Service.
-   * @param cls - A class with a constructor that takes dependencies as arguments, which returns the Service.
-   */
-
-  /**
    * Registers a service in the container using a class constructor, simplifying the service creation process.
    *
    * This method is particularly useful when the service creation logic can be encapsulated within a class
@@ -425,22 +418,10 @@ export class Container<Services = {}> {
    *            specifying these dependencies.
    * @returns A new Container instance containing the newly created service, allowing for method chaining.
    */
-  providesClass<Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
+  providesClass = <Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
     token: Token,
     cls: InjectableClass<Services, Service, Tokens>
-  ): Container<AddService<Services, Token, Service>> {
-    const dependencies: readonly any[] = cls.dependencies;
-    // If the service depends on itself, e.g. in the multi-binding case, where we call append multiple times with
-    // the same token, we always must resolve the dependency using the parent container to avoid infinite loop.
-    const getFromParent = dependencies.indexOf(token) !== -1 ? () => this.get(token as any) : undefined;
-    const factory = memoize(this, function (this: Container<Services>) {
-      // Safety: getFromParent is defined if the token is in the dependencies list, so it is safe to call it.
-      return new cls(...(dependencies.map((t) => (t === token ? getFromParent!() : this.get(t))) as any));
-    });
-
-    const factories = { ...this.factories, [token]: factory };
-    return new Container(factories as unknown as MaybeMemoizedFactories<AddService<Services, Token, Service>>);
-  }
+  ) => this.providesService(ClassInjectable(token, cls));
 
   /**
    * Registers a static value as a service in the container. This method is ideal for services that do not
@@ -452,14 +433,8 @@ export class Container<Services = {}> {
    * @returns A new Container instance that includes the provided service, allowing for chaining additional
    *          `provides` calls.
    */
-  providesValue<Token extends TokenType, Service>(
-    token: Token,
-    value: Service
-  ): Container<AddService<Services, Token, Service>> {
-    const factory = memoize(this, () => value);
-    const factories = { ...this.factories, [token]: factory };
-    return new Container(factories as unknown as MaybeMemoizedFactories<AddService<Services, Token, Service>>);
-  }
+  providesValue = <Token extends TokenType, Service>(token: Token, value: Service) =>
+    this.providesService(Injectable(token, [], () => value));
 
   /**
    * Appends a value to the array associated with a specified token in the current Container, then returns
@@ -477,14 +452,10 @@ export class Container<Services = {}> {
    * @param value - A value to append to the array.
    * @returns The updated Container with the appended value in the specified array.
    */
-  appendValue<Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
+  appendValue = <Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
     token: Token,
     value: Service
-  ): Service extends any ? Container<Services> : never;
-
-  appendValue<Token extends TokenType, Service>(token: Token, value: Service): Container<any> {
-    return this.providesService(ConcatInjectable(token, () => value));
-  }
+  ) => this.providesService(ConcatInjectable(token, () => value)) as Container<Services>;
 
   /**
    * Appends an injectable class factory to the array associated with a specified token in the current Container,
@@ -501,18 +472,17 @@ export class Container<Services = {}> {
    * @param cls - A class with a constructor that takes dependencies as arguments, which returns the Service.
    * @returns The updated Container with the new service instance appended to the specified array.
    */
-  appendClass<
+  appendClass = <
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
     Service extends ArrayElement<Services[Token]>,
-  >(token: Token, cls: InjectableClass<Services, Service, Tokens>): Service extends any ? Container<Services> : never;
-
-  appendClass<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service>(
+  >(
     token: Token,
     cls: InjectableClass<Services, Service, Tokens>
-  ): Container<any> {
-    return this.providesService(ConcatInjectable(token, () => this.providesClass(token, cls).get(token)));
-  }
+  ) =>
+    this.providesService(
+      ConcatInjectable(token, () => this.providesClass(token, cls).get(token))
+    ) as Container<Services>;
 
   /**
    * Appends a new service instance to an existing array within the container using an `InjectableFunction`.
@@ -531,17 +501,16 @@ export class Container<Services = {}> {
    * @returns The updated Container, now including the new service instance appended to the array
    * specified by the token.
    */
-  append<
+  append = <
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
     Service extends ArrayElement<Services[Token]>,
-  >(fn: InjectableFunction<Services, Tokens, Token, Service>): Service extends any ? Container<Services> : never;
-
-  append<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service>(
+  >(
     fn: InjectableFunction<Services, Tokens, Token, Service>
-  ): Container<any> {
-    return this.providesService(ConcatInjectable(fn.token, () => this.providesService(fn).get(fn.token)));
-  }
+  ) =>
+    this.providesService(
+      ConcatInjectable(fn.token, () => this.providesService(fn).get(fn.token))
+    ) as Container<Services>;
 
   private providesService<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service>(
     fn: InjectableFunction<Services, Tokens, Token, Service>
@@ -559,6 +528,6 @@ export class Container<Services = {}> {
     // MaybeMemoizedFactories object with the expected set of services – but when using the spread operation to
     // merge two objects, the compiler widens the Token type to string. So we must re-narrow via casting.
     const factories = { ...this.factories, [token]: factory };
-    return new Container(factories as unknown as MaybeMemoizedFactories<AddService<Services, Token, Service>>);
+    return new Container(factories) as Container<AddService<Services, Token, Service>>;
   }
 }

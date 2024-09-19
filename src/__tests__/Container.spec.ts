@@ -1,3 +1,4 @@
+// eslint-disable-next-line max-classes-per-file
 import { Container } from "../Container";
 import { Injectable } from "../Injectable";
 import { PartialContainer } from "../PartialContainer";
@@ -138,6 +139,53 @@ describe("Container", () => {
       const newInjectable = Injectable("TestService", ["TestService"] as const, (ts: string) => `replaced ${ts}`);
       containerWithService = containerWithService.provides(newInjectable);
       expect(containerWithService.get(injectable.token)).toEqual(newInjectable(injectable()));
+    });
+  });
+
+  describe("when providing a Service using providesClass", () => {
+    const container = Container.providesValue("value", 1);
+
+    test("test simple case", () => {
+      class Item {
+        static dependencies = ["value"] as const;
+        constructor(public value: number) {}
+      }
+      const containerWithService = container.providesClass("service", Item);
+      expect(containerWithService.get("service")).toEqual(new Item(1));
+    });
+
+    test("error if class constructor arity doesn't match dependencies", () => {
+      class Item {
+        static dependencies = ["value", "value2"] as const;
+        constructor(public value: number) {}
+      }
+      // @ts-expect-error should be failing to compile as the constructor doesn't match dependencies
+      expect(() => container.providesClass("service", Item).get("service")).toThrow();
+      // should not fail now as we provide the missing dependency
+      container.providesValue("value2", 2).providesClass("service", Item).get("service");
+    });
+
+    test("error if class constructor argument type doesn't match provided by container", () => {
+      class Item {
+        static dependencies = ["value"] as const;
+        constructor(public value: string) {}
+      }
+      // @ts-expect-error must fail to compile as the constructor argument type doesn't match dependencies
+      container.providesClass("service", Item).get("service");
+      // should not fail now as we provide the correct type
+      container.providesValue("value", "1").providesClass("service", Item).get("service");
+    });
+
+    test("error if class constructor argument type doesn't match provided by container", () => {
+      class Item {
+        static dependencies = ["value"] as const;
+        constructor(
+          public value: number,
+          public value2: string
+        ) {}
+      }
+      // @ts-expect-error must fail to compile as the constructor arity type doesn't match dependencies array length
+      container.providesValue("value2", "2").providesClass("service", Item).get("service");
     });
   });
 
