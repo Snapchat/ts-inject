@@ -36,6 +36,14 @@ export type ContainerToken = typeof CONTAINER;
 
 type ArrayElement<A> = A extends readonly (infer T)[] ? T : never;
 
+type ReturnTypeOfFactories<T> = T extends { factories: infer R } ? R : never;
+
+/**
+ * Helper type for extracting valid keys from a container instance
+ */
+export type ContainerKeys<T> = keyof ReturnTypeOfFactories<T>;
+
+
 /**
  * Represents the dependency injection container that manages the registration,
  * creation, and retrieval of services. The Container class is central to
