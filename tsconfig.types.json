@@ -2,7 +2,7 @@
   "extends": "./tsconfig.esm.json",
   "compilerOptions": {
     "declaration": true,
-    "declarationDir": "./dist/types",
+    "declarationDir": "./dist/types/default",
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "module": "es2015",

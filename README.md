@@ -91,6 +91,12 @@ db.save("user2"); // Log: Saving record: user2
 
 For comprehensive documentation of all ts-inject features and APIs, please refer to the [API Reference](https://snapchat.github.io/ts-inject/).
 
+### Supporting Multiple TypeScript Versions
+
+The library leverages [`const` type parameters](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html#const-type-parameters) introduced in TypeScript 5.0 to enhance type inference. To maintain compatibility with earlier TypeScript versions, we generate two versions of type declarations: `default` (for TypeScript 5.0 and above) and `preTs5` (for TypeScript versions below 5.0).
+
+This approach ensures that all users can seamlessly utilize our library regardless of their TypeScript version. The `package.json` configuration directs the TypeScript compiler to the appropriate type declarations using the `typesVersions` field.
+
 ## Contributing
 
 [Contributing guide](CONTRIBUTING.md).
