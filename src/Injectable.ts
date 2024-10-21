@@ -101,6 +101,30 @@ export function Injectable(
 }
 
 /**
+ * A compatibility version of {@link Injectable} for TypeScript 4 and earlier users.
+ * This function behaves identically to {@link Injectable} but requires the use of `as const` on the dependencies array.
+ *
+ * @deprecated Use {@link Injectable} instead. This function is provided for compatibility with TypeScript 4
+ * and earlier versions and will be removed in future releases.
+ *
+ * @see {@link Injectable} for detailed usage instructions and examples.
+ */
+export function InjectableCompat<
+  Token extends TokenType,
+  Tokens extends readonly TokenType[],
+  Params extends readonly any[],
+  Service,
+>(
+  token: Token,
+  dependencies: Tokens,
+  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+): Tokens["length"] extends Params["length"]
+  ? InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service>
+  : never {
+  return Injectable(token, dependencies, fn);
+}
+
+/**
  * Creates an Injectable factory function for an InjectableClass.
  *
  * @example
