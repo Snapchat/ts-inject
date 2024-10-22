@@ -106,20 +106,23 @@ export function Injectable(
  * @example
  * ```ts
  * class InjectableClassService {
- *     static dependencies = ["service"] as const;
- *     constructor(public service: string) {}
- *     public print(): string {
- *          console.log(this.service);
- *     }
+ *   static dependencies = ["service"] as const;
+ *   constructor(public service: string) {}
+ *   public print(): void {
+ *     console.log(this.service);
+ *   }
  * }
  *
- * let container = Container.provides("service", "service value")
- *      .provides(ClassInjectable("classService", InjectableClassService));
+ * const container = Container.providesValue("service", "service value").provides(
+ *   ClassInjectable("classService", InjectableClassService)
+ * );
  *
  * container.get("classService").print(); // prints "service value"
+ * ```
  *
- * // prefer using Container's provideClass method. Above is the equivalent of:
- * container = Container.provides("service", "service value")
+ * Prefer using Container's provideClass method. Above is the equivalent of:
+ * ```ts
+ * const container = Container.provides("service", "service value")
  *     .providesClass("classService", InjectableClassService);
  *
  * container.get("classService").print(); // prints "service value"
@@ -128,10 +131,15 @@ export function Injectable(
  * @param token Token identifying the Service.
  * @param cls InjectableClass to instantiate.
  */
-export function ClassInjectable<Services, Token extends TokenType, const Tokens extends readonly TokenType[], Service>(
+export function ClassInjectable<
+  Class extends InjectableClass<any, any, any>,
+  Dependencies extends ConstructorParameters<Class>,
+  Token extends TokenType,
+  Tokens extends Class["dependencies"],
+>(
   token: Token,
-  cls: InjectableClass<Services, Service, Tokens>
-): InjectableFunction<Services, Tokens, Token, Service>;
+  cls: Class
+): InjectableFunction<ServicesFromTokenizedParams<Tokens, Dependencies>, Tokens, Token, ConstructorReturnType<Class>>;
 
 export function ClassInjectable(
   token: TokenType,
@@ -230,3 +238,5 @@ export function ConcatInjectable(
   factory.dependencies = [token, ...dependencies];
   return factory;
 }
+
+export type ConstructorReturnType<T> = T extends new (...args: any) => infer C ? C : any;
