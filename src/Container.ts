@@ -512,9 +512,12 @@ export class Container<Services = {}> {
       ConcatInjectable(fn.token, () => this.providesService(fn).get(fn.token))
     ) as Container<Services>;
 
-  private providesService<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service>(
-    fn: InjectableFunction<Services, Tokens, Token, Service>
-  ): Container<AddService<Services, Token, Service>> {
+  private providesService<
+    Token extends TokenType,
+    Tokens extends readonly ValidTokens<Services>[],
+    Service,
+    Dependencies,
+  >(fn: InjectableFunction<Dependencies, Tokens, Token, Service>): Container<AddService<Services, Token, Service>> {
     const token = fn.token;
     const dependencies: readonly any[] = fn.dependencies;
     // If the service depends on itself, e.g. in the multi-binding case, where we call append multiple times with

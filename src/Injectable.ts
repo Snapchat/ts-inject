@@ -105,33 +105,41 @@ export function Injectable(
  *
  * @example
  * ```ts
- * class InjectableClassService {
- *     static dependencies = ["service"] as const;
- *     constructor(public service: string) {}
- *     public print(): string {
- *          console.log(this.service);
- *     }
+ * class Logger {
+ *   static dependencies = ["config"] as const;
+ *   constructor(private config: string) {}
+ *   public print() {
+ *     console.log(this.config);
+ *   }
  * }
  *
- * let container = Container.provides("service", "service value")
- *      .provides(ClassInjectable("classService", InjectableClassService));
+ * const container = Container
+ *   .providesValue("config", "value")
+ *   .provides(ClassInjectable("logger", Logger));
  *
- * container.get("classService").print(); // prints "service value"
+ * container.get("logger").print(); // prints "value"
+ * ```
  *
- * // prefer using Container's provideClass method. Above is the equivalent of:
- * container = Container.provides("service", "service value")
- *     .providesClass("classService", InjectableClassService);
- *
- * container.get("classService").print(); // prints "service value"
+ * It is recommended to use the `Container.provideClass()` method. The example above is equivalent to:
+ * ```ts
+ * const container = Container
+ *   .providesValue("config", "value")
+ *   .providesClass("logger", Logger);
+ * container.get("logger").print(); // prints "value"
  * ```
  *
  * @param token Token identifying the Service.
  * @param cls InjectableClass to instantiate.
  */
-export function ClassInjectable<Services, Token extends TokenType, const Tokens extends readonly TokenType[], Service>(
+export function ClassInjectable<
+  Class extends InjectableClass<any, any, any>,
+  Dependencies extends ConstructorParameters<Class>,
+  Token extends TokenType,
+  Tokens extends Class["dependencies"],
+>(
   token: Token,
-  cls: InjectableClass<Services, Service, Tokens>
-): InjectableFunction<Services, Tokens, Token, Service>;
+  cls: Class
+): InjectableFunction<ServicesFromTokenizedParams<Tokens, Dependencies>, Tokens, Token, ConstructorReturnType<Class>>;
 
 export function ClassInjectable(
   token: TokenType,
@@ -230,3 +238,5 @@ export function ConcatInjectable(
   factory.dependencies = [token, ...dependencies];
   return factory;
 }
+
+export type ConstructorReturnType<T> = T extends new (...args: any) => infer C ? C : any;
