@@ -28,11 +28,8 @@ export function Injectable<Token extends TokenType, Service>(
  * The dependencies are specified as tokens, and the factory function
  * will receive these dependencies as arguments in the order they are listed.
  *
- * **Note:** Dependencies must be specified as constant literals to allow TypeScript to ensure type safety.
- *
- * **Note:** Starting with TypeScript version 5, the `as const` assertion in the example below is not needed
- * due to the introduction of [const type parameters feature](
- * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html#const-type-parameters).
+ * **Important:** This function requires **TypeScript 5 or later** due to the use of `const` type parameters.
+ * Users on TypeScript 4 and earlier must use {@link InjectableCompat} instead.
  *
  * @example
  * ```ts
