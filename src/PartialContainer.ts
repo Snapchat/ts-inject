@@ -1,6 +1,6 @@
 import { entries } from "./entries";
-import { memoize } from "./memoize";
 import type { Memoized } from "./memoize";
+import { memoize } from "./memoize";
 import type { Container } from "./Container";
 import type {
   AddService,
@@ -10,9 +10,8 @@ import type {
   TokenType,
   ValidTokens,
 } from "./types";
+import type { ConstructorReturnType } from "./Injectable";
 import { ClassInjectable, Injectable } from "./Injectable";
-
-type ConstructorReturnType<T> = T extends new (...args: any) => infer C ? C : any;
 
 // Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
 // will see the mapped type instead of the AddDependencies type alias. This produces better hints.
