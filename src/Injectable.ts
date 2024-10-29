@@ -115,9 +115,7 @@ export function InjectableCompat<
   token: Token,
   dependencies: Tokens,
   fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
-): Tokens["length"] extends Params["length"]
-  ? InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service>
-  : never {
+): ReturnType<typeof Injectable> {
   return Injectable(token, dependencies, fn);
 }
 
