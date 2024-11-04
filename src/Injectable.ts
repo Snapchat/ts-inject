@@ -28,11 +28,8 @@ export function Injectable<Token extends TokenType, Service>(
  * The dependencies are specified as tokens, and the factory function
  * will receive these dependencies as arguments in the order they are listed.
  *
- * **Note:** Dependencies must be specified as constant literals to allow TypeScript to ensure type safety.
- *
- * **Note:** Starting with TypeScript version 5, the `as const` assertion in the example below is not needed
- * due to the introduction of [const type parameters feature](
- * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html#const-type-parameters).
+ * **Important:** This function requires **TypeScript 5 or later** due to the use of `const` type parameters.
+ * Users on TypeScript 4 and earlier must use {@link InjectableCompat} instead.
  *
  * @example
  * ```ts
@@ -98,6 +95,28 @@ export function Injectable(
   factory.token = token;
   factory.dependencies = dependencies;
   return factory;
+}
+
+/**
+ * A compatibility version of {@link Injectable} for TypeScript 4 and earlier users.
+ * This function behaves identically to {@link Injectable} but requires the use of `as const` on the dependencies array.
+ *
+ * @deprecated Use {@link Injectable} instead. This function is provided for compatibility with TypeScript 4
+ * and earlier versions and will be removed in future releases.
+ *
+ * @see {@link Injectable} for detailed usage instructions and examples.
+ */
+export function InjectableCompat<
+  Token extends TokenType,
+  Tokens extends readonly TokenType[],
+  Params extends readonly any[],
+  Service,
+>(
+  token: Token,
+  dependencies: Tokens,
+  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+): ReturnType<typeof Injectable> {
+  return Injectable(token, dependencies, fn);
 }
 
 /**
