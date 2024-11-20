@@ -26,14 +26,14 @@ export type CorrespondingServices<Services, Tokens extends readonly ValidTokens<
 };
 
 /**
- * A valid InjectableFunction is one that can be successfully called, given some Services, to return a new Service. That
- * is, it must satisfy two conditions:
+ * A valid `InjectableFunction` is one that can be successfully called, given some Services, to return a new Service.
+ * That is, it must satisfy two conditions:
  *
  *   1. All the Tokens it specifies as dependencies are valid given the Services (i.e. they are either the Container
  *   Token or keys of the Services type).
  *   2. The function argument types correspond to the Services specified by the dependency Tokens.
  *
- * A InjectableFunction also includes its own key Token and dependency Tokens as metadata, so it may be resolved by
+ * A `InjectableFunction` also includes its own key Token and dependency Tokens as metadata, so it may be resolved by
  * Container<Services> later.
  */
 export type InjectableFunction<
@@ -49,6 +49,11 @@ export type InjectableFunction<
     }
   : never;
 
+/**
+ * Represents a class that can be used as an injectable service within a dependency injection {@link Container}.
+ * The `InjectableClass` type ensures that the class's dependencies and constructor signature align with
+ * the services available in the container, providing strong type safety.
+ */
 export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly ValidTokens<Services>[]
   ? {
       readonly dependencies: Tokens;
@@ -58,6 +63,44 @@ export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly
 
 export type AnyInjectable = InjectableFunction<any, readonly TokenType[], TokenType, any>;
 
+/**
+ * Maps an array of {@link InjectableFunction} to a service type object, where each key is the token of an
+ * {@link Injectable}, and the corresponding value is the return type of that {@link Injectable}.
+ *
+ * This utility type is useful for deriving the service types provided by a collection of {@link InjectableFunction}s,
+ * ensuring type safety and consistency throughout your application.
+ *
+ * You can use `ServicesFromInjectables` to construct a type that serves as a type parameter for a {@link Container},
+ * allowing the container's type to accurately reflect the services it provides,
+ * even before the container is constructed.
+ *
+ * @typeParam Injectables - A tuple of {@link InjectableFunction}s.
+ *
+ * @example
+ * // Define some Injectable functions
+ * const injectable1 = Injectable("Service1", () => "service1");
+ * const injectable2 = Injectable("Service2", () => 42);
+ *
+ * // Collect them in a tuple
+ * const injectables = [injectable1, injectable2] as const;
+ *
+ * // Use ServicesFromInjectables to derive the services' types
+ * type Services = ServicesFromInjectables<typeof injectables>;
+ *
+ * // Services type is equivalent to:
+ * // {
+ * //   Service1: string;
+ * //   Service2: number;
+ * // }
+ *
+ * // Declare a container variable with the derived Services type
+ * // This allows us to reference the container with accurate typing before it's constructed,
+ * // ensuring type safety and enabling its use in type annotations elsewhere
+ * let container: Container<Services>;
+ *
+ * // Assign the container with the actual instance
+ * container = Container.provides(injectable1).provides(injectable2);
+ */
 export type ServicesFromInjectables<Injectables extends readonly AnyInjectable[]> = {
   [Name in Injectables[number]["token"]]: ReturnType<Extract<Injectables[number], { token: Name }>>;
 };
