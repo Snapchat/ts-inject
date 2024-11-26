@@ -421,7 +421,7 @@ export class Container<Services = {}> {
   providesClass = <Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
     token: Token,
     cls: InjectableClass<Services, Service, Tokens>
-  ) => this.providesService(ClassInjectable(token, cls));
+  ) => this.providesService(ClassInjectable(token, cls)) as Container<AddService<Services, Token, Service>>;
 
   /**
    * Registers a static value as a service in the container. This method is ideal for services that do not
