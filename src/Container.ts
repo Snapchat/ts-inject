@@ -1,8 +1,18 @@
 import type { Memoized } from "./memoize";
 import { isMemoized, memoize } from "./memoize";
 import { PartialContainer } from "./PartialContainer";
-import type { AddService, AddServices, InjectableClass, InjectableFunction, TokenType, ValidTokens } from "./types";
-import { ClassInjectable, ConcatInjectable, Injectable } from "./Injectable";
+import type {
+  AddService,
+  AddServices,
+  AsTuple,
+  CorrespondingServices,
+  InjectableClass,
+  InjectableFunction,
+  ServicesFromTokenizedParams,
+  TokenType,
+  ValidTokens,
+} from "./types";
+import { ConcatInjectable, Injectable } from "./Injectable";
 import { entries } from "./entries";
 
 type MaybeMemoizedFactories<Services> = {
@@ -418,10 +428,19 @@ export class Container<Services = {}> {
    *            specifying these dependencies.
    * @returns A new Container instance containing the newly created service, allowing for method chaining.
    */
-  providesClass = <Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
+  providesClass = <
+    Token extends TokenType,
+    Tokens extends readonly ValidTokens<Services>[],
+    Class extends {
+      readonly dependencies: Tokens;
+      new (...args: Params): InstanceType<Class>;
+    },
+    Params extends AsTuple<CorrespondingServices<Services, Class["dependencies"]>>,
+  >(
     token: Token,
-    cls: InjectableClass<Services, Service, Tokens>
-  ) => this.providesService(ClassInjectable(token, cls));
+    cls: Class
+  ): Container<AddService<Services, Token, InstanceType<Class>>> =>
+    this.providesService(Injectable(token, cls.dependencies, (...args: Params) => new cls(...args)));
 
   /**
    * Registers a static value as a service in the container. This method is ideal for services that do not
