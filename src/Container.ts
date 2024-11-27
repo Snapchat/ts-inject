@@ -421,7 +421,8 @@ export class Container<Services = {}> {
   providesClass = <Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
     token: Token,
     cls: InjectableClass<Services, Service, Tokens>
-  ) => this.providesService(ClassInjectable(token, cls)) as Container<AddService<Services, Token, Service>>;
+  ): Container<AddService<Services, Token, Service>> =>
+    this.providesService(ClassInjectable(token, cls)) as Container<AddService<Services, Token, Service>>;
 
   /**
    * Registers a static value as a service in the container. This method is ideal for services that do not
@@ -433,8 +434,10 @@ export class Container<Services = {}> {
    * @returns A new Container instance that includes the provided service, allowing for chaining additional
    *          `provides` calls.
    */
-  providesValue = <Token extends TokenType, Service>(token: Token, value: Service) =>
-    this.providesService(Injectable(token, [], () => value));
+  providesValue = <Token extends TokenType, Service>(
+    token: Token,
+    value: Service
+  ): Container<AddService<Services, Token, Service>> => this.providesService(Injectable(token, [], () => value));
 
   /**
    * Appends a value to the array associated with a specified token in the current Container, then returns
@@ -455,7 +458,7 @@ export class Container<Services = {}> {
   appendValue = <Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
     token: Token,
     value: Service
-  ) => this.providesService(ConcatInjectable(token, () => value)) as Container<Services>;
+  ): Container<Services> => this.providesService(ConcatInjectable(token, () => value)) as Container<Services>;
 
   /**
    * Appends an injectable class factory to the array associated with a specified token in the current Container,
@@ -479,7 +482,7 @@ export class Container<Services = {}> {
   >(
     token: Token,
     cls: InjectableClass<Services, Service, Tokens>
-  ) =>
+  ): Container<Services> =>
     this.providesService(
       ConcatInjectable(token, () => this.providesClass(token, cls).get(token))
     ) as Container<Services>;
@@ -507,7 +510,7 @@ export class Container<Services = {}> {
     Service extends ArrayElement<Services[Token]>,
   >(
     fn: InjectableFunction<Services, Tokens, Token, Service>
-  ) =>
+  ): Container<Services> =>
     this.providesService(
       ConcatInjectable(fn.token, () => this.providesService(fn).get(fn.token))
     ) as Container<Services>;
