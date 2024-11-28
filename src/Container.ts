@@ -420,15 +420,15 @@ export class Container<Services = {}> {
   providesClass = <
     Token extends TokenType,
     Tokens extends readonly ValidTokens<Services>[],
-    Class extends {
-      readonly dependencies: Tokens;
-      new (...args: Params): InstanceType<Class>;
-    },
-    Params extends MapTokensToTypes<Services, Class["dependencies"]>,
+    Params extends MapTokensToTypes<Services, Tokens>,
+    Service
   >(
     token: Token,
-    cls: Class
-  ): Container<AddService<Services, Token, InstanceType<Class>>> =>
+    cls: {
+      readonly dependencies: Tokens;
+      new (...args: Params): Service;
+    }
+  ): Container<AddService<Services, Token, Service>> =>
     this.providesService(Injectable(token, cls.dependencies, (...args: Params) => new cls(...args)));
 
   /**
@@ -486,15 +486,15 @@ export class Container<Services = {}> {
   appendClass = <
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
-    Class extends {
-      readonly dependencies: Tokens;
-      new (...args: Params): InstanceType<Class>;
-    },
-    Params extends MapTokensToTypes<Services, Class["dependencies"]>,
+    Params extends MapTokensToTypes<Services, Tokens>,
+    Service
   >(
     token: Token,
-    cls: Class
-  ): Container<AddService<Services, Token, InstanceType<Class>[]>> =>
+    cls: {
+      readonly dependencies: Tokens;
+      new (...args: Params): Service;
+    }
+  ): Container<AddService<Services, Token, Service[]>> =>
     this.providesService(ConcatInjectable(token, cls.dependencies, (...args: Params) => new cls(...args)));
 
   /**
