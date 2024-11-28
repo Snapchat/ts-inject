@@ -1,17 +1,8 @@
 import type { Memoized } from "./memoize";
 import { isMemoized, memoize } from "./memoize";
 import { PartialContainer } from "./PartialContainer";
-import type {
-  AddService,
-  AddServices,
-  MapTokensToTypes,
-  InjectableFunction,
-  TokenType,
-  ValidTokens,
-  ServicesFromTokenizedParams,
-} from "./types";
+import type { AddService, AddServices, MapTokensToTypes, InjectableFunction, TokenType, ValidTokens } from "./types";
 import { ConcatInjectable, Injectable } from "./Injectable";
-import { entries } from "./entries";
 
 type MaybeMemoizedFactories<Services> = {
   [K in keyof Services]: (() => Services[K]) | Memoized<() => Services[K]>;
@@ -150,8 +141,8 @@ export class Container<Services = {}> {
    * defines the initial set of services to be contained within the new Container instance.
    * @returns A new Container instance populated with the provided services.
    */
-  static fromObject<Services extends { [s: string]: any }>(services: Services): Container<Services> {
-    return entries(services).reduce(
+  static fromObject<Services extends { [s: TokenType]: any }>(services: Services): Container<Services> {
+    return Object.entries(services).reduce(
       (container, [token, value]) => container.providesValue(token, value),
       new Container({})
     ) as Container<Services>;
