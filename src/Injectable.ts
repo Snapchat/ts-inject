@@ -1,4 +1,4 @@
-import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
+import type { InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
 
 /**
  * Creates an Injectable factory function designed for services without dependencies.
@@ -115,57 +115,6 @@ export function InjectableCompat<
   fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
 ): ReturnType<typeof Injectable> {
   return Injectable(token, dependencies, fn);
-}
-
-/**
- * Creates an Injectable factory function for an InjectableClass.
- *
- * @example
- * ```ts
- * class Logger {
- *   static dependencies = ["config"] as const;
- *   constructor(private config: string) {}
- *   public print() {
- *     console.log(this.config);
- *   }
- * }
- *
- * const container = Container
- *   .providesValue("config", "value")
- *   .provides(ClassInjectable("logger", Logger));
- *
- * container.get("logger").print(); // prints "value"
- * ```
- *
- * It is recommended to use the `Container.provideClass()` method. The example above is equivalent to:
- * ```ts
- * const container = Container
- *   .providesValue("config", "value")
- *   .providesClass("logger", Logger);
- * container.get("logger").print(); // prints "value"
- * ```
- *
- * @param token Token identifying the Service.
- * @param cls InjectableClass to instantiate.
- */
-export function ClassInjectable<
-  Class extends InjectableClass<any, any, any>,
-  Dependencies extends ConstructorParameters<Class>,
-  Token extends TokenType,
-  Tokens extends Class["dependencies"],
->(
-  token: Token,
-  cls: Class
-): InjectableFunction<ServicesFromTokenizedParams<Tokens, Dependencies>, Tokens, Token, ConstructorReturnType<Class>>;
-
-export function ClassInjectable(
-  token: TokenType,
-  cls: InjectableClass<any, any, readonly TokenType[]>
-): InjectableFunction<any, readonly TokenType[], TokenType, any> {
-  const factory = (...args: any[]) => new cls(...args);
-  factory.token = token;
-  factory.dependencies = cls.dependencies;
-  return factory;
 }
 
 /**

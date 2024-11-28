@@ -53,18 +53,6 @@ export type MapTokensToTypes<Services, Tokens extends readonly ValidTokens<Servi
   CorrespondingServices<Services, Tokens>
 >;
 
-/**
- * Represents a class that can be used as an injectable service within a dependency injection {@link Container}.
- * The `InjectableClass` type ensures that the class's dependencies and constructor signature align with
- * the services available in the container, providing strong type safety.
- */
-export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly ValidTokens<Services>[]
-  ? {
-      readonly dependencies: Tokens;
-      new (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
-    }
-  : never;
-
 export type AnyInjectable = InjectableFunction<any, readonly TokenType[], TokenType, any>;
 
 /**

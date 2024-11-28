@@ -141,7 +141,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * ```
    *
    * @param token the Token by which the class will be known.
-   * @param cls the class to be provided, must match the InjectableClass type.
+   * @param cls the class to be provided.
    */
   providesClass = <
     Token extends TokenType,
