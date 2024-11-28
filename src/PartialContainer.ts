@@ -2,16 +2,8 @@ import { entries } from "./entries";
 import type { Memoized } from "./memoize";
 import { memoize } from "./memoize";
 import type { Container } from "./Container";
-import type {
-  AddService,
-  InjectableClass,
-  InjectableFunction,
-  ServicesFromTokenizedParams,
-  TokenType,
-  ValidTokens,
-} from "./types";
-import type { ConstructorReturnType } from "./Injectable";
-import { ClassInjectable, Injectable } from "./Injectable";
+import type { AddService, InjectableFunction, ServicesFromTokenizedParams, TokenType, ValidTokens } from "./types";
+import { Injectable } from "./Injectable";
 
 // Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
 // will see the mapped type instead of the AddDependencies type alias. This produces better hints.
@@ -25,6 +17,13 @@ type AddDependencies<ParentDependencies, Dependencies> = ParentDependencies exte
           : never;
     }
   : never;
+
+type UpdateDependencies<
+  ExistingServices,
+  ExistingDependencies,
+  NewToken extends TokenType,
+  NewDependencies,
+> = AddDependencies<ExcludeKey<ExistingDependencies, NewToken>, ExcludeKey<NewDependencies, keyof ExistingServices>>;
 
 type ExcludeKey<T, U> = T extends any ? { [K in Exclude<keyof T, U>]: T[K] } : never;
 
@@ -101,13 +100,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     fn: PartialInjectableFunction<AdditionalDependencies, Tokens, Token, Service>
   ): PartialContainer<
     AddService<Services, Token, Service>,
-    // The dependencies of the new PartialContainer are the combined dependencies of this container and the
-    // PartialInjectableFunction -- but we exclude any dependencies already provided by this container (i.e. this
-    // container's Services) as well as the new Service being provided.
-    ExcludeKey<
-      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
-      keyof Services
-    >
+    UpdateDependencies<Services, Dependencies, Token, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>
   > {
     return new PartialContainer({ ...this.injectables, [fn.token]: fn } as any);
   }
@@ -125,7 +118,10 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param token the Token by which the value will be known.
    * @param value the value to be provided.
    */
-  providesValue = <Token extends TokenType, Service>(token: Token, value: Service) =>
+  providesValue = <Token extends TokenType, Service>(
+    token: Token,
+    value: Service
+  ): PartialContainer<AddService<Services, Token, Service>, UpdateDependencies<Services, Dependencies, Token, {}>> =>
     this.provides(Injectable(token, [], () => value));
 
   /**
@@ -148,15 +144,25 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param cls the class to be provided, must match the InjectableClass type.
    */
   providesClass = <
-    Class extends InjectableClass<any, any, any>,
-    AdditionalDependencies extends ConstructorParameters<Class>,
-    Tokens extends Class["dependencies"],
-    Service extends ConstructorReturnType<Class>,
     Token extends TokenType,
+    Tokens extends readonly TokenType[],
+    Params extends readonly any[] & { length: Tokens["length"] },
+    Service,
   >(
     token: Token,
-    cls: Class
-  ) => this.provides<AdditionalDependencies, Tokens, Token, Service>(ClassInjectable(token, cls));
+    cls: {
+      readonly dependencies: Tokens;
+      new (...args: Params): Service;
+    }
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    UpdateDependencies<Services, Dependencies, Token, ServicesFromTokenizedParams<Tokens, Params>>
+  > => {
+    const injectable = (...args: Params) => new cls(...args);
+    injectable.dependencies = cls.dependencies;
+    injectable.token = token;
+    return this.provides<Params, Tokens, Token, Service>(injectable);
+  };
 
   /**
    * In order to create a [Container], the InjectableFunctions maintained by the PartialContainer must be memoized
