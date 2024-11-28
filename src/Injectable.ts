@@ -56,15 +56,13 @@ export function Injectable<Token extends TokenType, Service>(
 export function Injectable<
   Token extends TokenType,
   const Tokens extends readonly TokenType[],
+  // The function arity (number of arguments) must match the number of dependencies specified
   Params extends readonly any[] & { length: Tokens["length"] },
   Service,
   Deps extends ServicesFromTokenizedParams<Tokens, Params>,
 >(
   token: Token,
   dependencies: Tokens,
-  // The function arity (number of arguments) must match the number of dependencies specified – if they don't, we'll
-  // force a compiler error by saying the arguments should be `void[]`. We'll also throw at runtime, so the return
-  // type will be `never`.
   fn: (...args: Params) => Service
 ): InjectableFunction<Deps, Tokens, Token, Service>;
 
