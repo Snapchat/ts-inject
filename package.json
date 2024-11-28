@@ -1,6 +1,6 @@
 {
   "name": "@snap/ts-inject",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "100% typesafe dependency injection framework for TypeScript projects",
   "license": "MIT",
   "author": "Snap Inc.",
