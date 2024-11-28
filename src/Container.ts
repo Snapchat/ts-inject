@@ -524,30 +524,18 @@ export class Container<Services = {}> {
    * specified by the token.
    */
   append = <
-  Token extends keyof Services,
-  Tokens extends readonly ValidTokens<Services>[],
-  // Fn extends {
-  //   (...args: Params): ArrayElement<Services[Token]>;
-  //   token: Token;
-  //   dependencies: Tokens;
-  // },
-  Fn extends InjectableFunction<Services, Tokens, Token, ArrayElement<Services[Token]>>,
-  Params extends MapTokensToTypes<Services, Fn["dependencies"]>,
-  Deps extends ServicesFromTokenizedParams<Tokens, Params>
+    Token extends keyof Services,
+    Tokens extends readonly ValidTokens<Services>[],
+    Fn extends {
+      (...args: Params): ArrayElement<Services[Token]>;
+      token: Token;
+      dependencies: Tokens;
+    },
+    Params extends MapTokensToTypes<Services, Fn["dependencies"]>,
   >(
-    fn: Fn
-  ): Container<AddService<Services, Token, ArrayElement<Services[Token]>[]>> => {
-    type ee = Fn["dependencies"];
-    const i = ConcatInjectable<
-      Token,
-      Tokens,
-      Params,
-      ArrayElement<Services[Token]>[],
-      Deps
-    >(fn.token, fn.dependencies, (...args) => fn(...args));
-    const p = this.providesService(i);
-    return p;
-  };
+    fn: Tokens extends readonly TokenType[] ? Fn : never
+  ): Container<AddService<Services, Token, ArrayElement<Services[Token]>[]>> =>
+    this.providesService(ConcatInjectable(fn.token, fn.dependencies, (...args: Params) => fn(...args)));
 
   private providesService<
     Token extends TokenType,
