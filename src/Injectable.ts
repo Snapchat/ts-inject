@@ -205,5 +205,3 @@ export function ConcatInjectable(
   factory.dependencies = [token, ...dependencies];
   return factory;
 }
-
-export type ConstructorReturnType<T> = T extends new (...args: any) => infer C ? C : any;
