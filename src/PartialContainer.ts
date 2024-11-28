@@ -5,19 +5,65 @@ import type { Container } from "./Container";
 import type { AddService, InjectableFunction, ServicesFromTokenizedParams, TokenType, ValidTokens } from "./types";
 import { Injectable } from "./Injectable";
 
-// Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
-// will see the mapped type instead of the AddDependencies type alias. This produces better hints.
-type AddDependencies<ParentDependencies, Dependencies> = ParentDependencies extends any
+/**
+ * Combines two dependency maps into one, merging properties from both `ParentDependencies` and `Dependencies`.
+ * If a key exists in both, the value from `ParentDependencies` is used.
+ *
+ * This type is used to aggregate dependencies in a way that provides better type hints and readability in IDEs,
+ * because using a conditional type forces TypeScript to evaluate and display the resulting mapped type directly,
+ * rather than just the type alias name.
+ *
+ * @typeParam ExistingDependencies - The existing set of dependencies.
+ * @typeParam NewDependencies - The new dependencies to add.
+ *
+ * @remarks
+ * The use of a mapped type over an intersection type produces more concise and informative type hints.
+ *
+ * @example
+ * ```typescript
+ * type A = { foo: number; bar: string };
+ * type B = { bar: boolean; baz: Date };
+ * type Combined = AddDependencies<A, B>;
+ * // Combined is { foo: number; bar: string; baz: Date }
+ * ```
+ */
+type AddDependencies<ExistingDependencies, NewDependencies> = ExistingDependencies extends any
   ? // A mapped type produces better, more concise type hints than an intersection type.
     {
-      [K in keyof ParentDependencies | keyof Dependencies]: K extends keyof ParentDependencies
-        ? ParentDependencies[K]
-        : K extends keyof Dependencies
-          ? Dependencies[K]
+      [K in keyof ExistingDependencies | keyof NewDependencies]: K extends keyof ExistingDependencies
+        ? ExistingDependencies[K]
+        : K extends keyof NewDependencies
+          ? NewDependencies[K]
           : never;
     }
   : never;
 
+/**
+ * Updates the dependencies of a container by combining existing dependencies with new ones,
+ * while excluding any dependencies that are already satisfied by the container's existing services
+ * or the new service being provided.
+ *
+ * Specifically:
+ * - It removes the `NewToken` from `ExistingDependencies` to avoid circular dependencies.
+ * - It excludes keys from `NewDependencies` that are already present in `ExistingServices`
+ * since those dependencies are already resolved.
+ * - It then combines the resulting dependencies into a new dependency map.
+ *
+ * @typeParam ExistingServices - The services already provided by the container.
+ * @typeParam ExistingDependencies - The current dependencies of the container.
+ * @typeParam NewToken - The token of the new service being added to the container.
+ * @typeParam NewDependencies - The dependencies required by the new service.
+ *
+ * @example
+ * ```typescript
+ * type ExistingServices = { foo: number };
+ * type ExistingDependencies = { bar: string; baz: boolean };
+ * type NewToken = 'qux';
+ * type NewDependencies = { baz: boolean; quux: Date };
+ * type Updated = UpdateDependencies<ExistingServices, ExistingDependencies, NewToken, NewDependencies>;
+ * // Updated is { bar: string; quux: Date }
+ * ```
+ */
 type UpdateDependencies<
   ExistingServices,
   ExistingDependencies,
@@ -161,7 +207,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     const injectable = (...args: Params) => new cls(...args);
     injectable.dependencies = cls.dependencies;
     injectable.token = token;
-    return this.provides<Params, Tokens, Token, Service>(injectable);
+    return this.provides(injectable);
   };
 
   /**

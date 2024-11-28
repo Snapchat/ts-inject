@@ -49,6 +49,17 @@ export type InjectableFunction<
     }
   : never;
 
+/**
+ * Maps a tuple of tokens to their corresponding service types based on the given Services type mapping.
+ *
+ * @example
+ * ```typescript
+ * type Services = { foo: string; bar: number; };
+ * type Tokens = ['foo', 'bar'];
+ * type Result = MapTokensToTypes<Services, Tokens>;
+ * // Result is [string, number]
+ * ```
+ */
 export type MapTokensToTypes<Services, Tokens extends readonly ValidTokens<Services>[]> = AsTuple<
   CorrespondingServices<Services, Tokens>
 >;
