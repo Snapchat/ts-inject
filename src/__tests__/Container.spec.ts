@@ -152,6 +152,7 @@ describe("Container", () => {
       }
       const containerWithService = container.providesClass("service", Item);
       expect(containerWithService.get("service")).toEqual(new Item(1));
+      expect(containerWithService.factories.service().value).toBe(1);
     });
 
     test("error if class constructor arity doesn't match dependencies", () => {
