@@ -56,18 +56,17 @@ export function Injectable<Token extends TokenType, Service>(
 export function Injectable<
   Token extends TokenType,
   const Tokens extends readonly TokenType[],
-  Params extends readonly any[],
+  Params extends readonly any[] & { length: Tokens["length"] },
   Service,
+  Deps extends ServicesFromTokenizedParams<Tokens, Params>,
 >(
   token: Token,
   dependencies: Tokens,
   // The function arity (number of arguments) must match the number of dependencies specified – if they don't, we'll
   // force a compiler error by saying the arguments should be `void[]`. We'll also throw at runtime, so the return
   // type will be `never`.
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
-): Tokens["length"] extends Params["length"]
-  ? InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service>
-  : never;
+  fn: (...args: Params) => Service
+): InjectableFunction<Deps, Tokens, Token, Service>;
 
 export function Injectable(
   token: TokenType,
@@ -79,11 +78,12 @@ export function Injectable(
 
   if (!fn) {
     throw new TypeError(
-      "[Injectable] Received invalid arguments. The factory function must be either the second " + "or third argument."
+      "[Injectable] Received invalid arguments. The factory function must be either the second or third argument."
     );
   }
 
-  if (fn.length !== dependencies.length) {
+  // const length = actualLength in fn ? fn[actualLength] as number : fn.length;
+  if (fn.length !== 0 && fn.length !== dependencies.length) {
     throw new TypeError(
       "[Injectable] Function arity does not match the number of dependencies. Function has arity " +
         `${fn.length}, but ${dependencies.length} dependencies were specified.` +
@@ -219,12 +219,13 @@ export function ConcatInjectable<Token extends TokenType, Service>(
 export function ConcatInjectable<
   Token extends TokenType,
   const Tokens extends readonly TokenType[],
-  Params extends readonly any[],
+  Params extends readonly any[] & { length: Tokens["length"] },
   Service,
+  Deps extends ServicesFromTokenizedParams<Tokens, Params>,
 >(
   token: Token,
   dependencies: Tokens,
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+  fn: (...args: Params) => Service
 ): InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service[]>;
 
 export function ConcatInjectable(
@@ -242,9 +243,9 @@ export function ConcatInjectable(
     );
   }
 
-  if (fn.length !== dependencies.length) {
+  if (fn.length !== 0 && fn.length !== dependencies.length) {
     throw new TypeError(
-      "[Injectable] Function arity does not match the number of dependencies. Function has arity " +
+      "[ConcatInjectable] Function arity does not match the number of dependencies. Function has arity " +
         `${fn.length}, but ${dependencies.length} dependencies were specified.` +
         `\nDependencies: ${JSON.stringify(dependencies)}`
     );

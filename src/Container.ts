@@ -4,13 +4,11 @@ import { PartialContainer } from "./PartialContainer";
 import type {
   AddService,
   AddServices,
-  AsTuple,
-  CorrespondingServices,
-  InjectableClass,
+  MapTokensToTypes,
   InjectableFunction,
-  ServicesFromTokenizedParams,
   TokenType,
   ValidTokens,
+  ServicesFromTokenizedParams,
 } from "./types";
 import { ConcatInjectable, Injectable } from "./Injectable";
 import { entries } from "./entries";
@@ -287,7 +285,7 @@ export class Container<Services = {}> {
    * in the provided {@link PartialContainer} initialized as needed.
    */
   run<AdditionalServices, Dependencies, FulfilledDependencies extends Dependencies>(
-    // FullfilledDependencies is assignable to Dependencies -- by specifying Container<FulfilledDependencies> as the
+    // FulfilledDependencies is assignable to Dependencies -- by specifying Container<FulfilledDependencies> as the
     // `this` type, we ensure this Container can provide all the Dependencies required by the PartialContainer.
     this: Container<FulfilledDependencies>,
     container: PartialContainer<AdditionalServices, Dependencies>
@@ -350,7 +348,7 @@ export class Container<Services = {}> {
    *          `PartialContainer`, with services from the `PartialContainer` taking precedence in case of conflicts.
    */
   provides<AdditionalServices, Dependencies, FulfilledDependencies extends Dependencies>(
-    // FullfilledDependencies is assignable to Dependencies -- by specifying Container<FulfilledDependencies> as the
+    // FulfilledDependencies is assignable to Dependencies -- by specifying Container<FulfilledDependencies> as the
     // `this` type, we ensure this Container can provide all the Dependencies required by the PartialContainer.
     this: Container<FulfilledDependencies>,
     container: PartialContainer<AdditionalServices, Dependencies>
@@ -435,7 +433,7 @@ export class Container<Services = {}> {
       readonly dependencies: Tokens;
       new (...args: Params): InstanceType<Class>;
     },
-    Params extends AsTuple<CorrespondingServices<Services, Class["dependencies"]>>,
+    Params extends MapTokensToTypes<Services, Class["dependencies"]>,
   >(
     token: Token,
     cls: Class
@@ -452,8 +450,10 @@ export class Container<Services = {}> {
    * @returns A new Container instance that includes the provided service, allowing for chaining additional
    *          `provides` calls.
    */
-  providesValue = <Token extends TokenType, Service>(token: Token, value: Service) =>
-    this.providesService(Injectable(token, [], () => value));
+  providesValue = <Token extends TokenType, Service>(
+    token: Token,
+    value: Service
+  ): Container<AddService<Services, Token, Service>> => this.providesService(Injectable(token, [], () => value));
 
   /**
    * Appends a value to the array associated with a specified token in the current Container, then returns
@@ -471,10 +471,11 @@ export class Container<Services = {}> {
    * @param value - A value to append to the array.
    * @returns The updated Container with the appended value in the specified array.
    */
-  appendValue = <Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
+  appendValue = <Token extends keyof Services>(
     token: Token,
-    value: Service
-  ) => this.providesService(ConcatInjectable(token, () => value)) as Container<Services>;
+    value: ArrayElement<Services[Token]>
+  ): Container<AddService<Services, Token, ArrayElement<Services[Token]>[]>> =>
+    this.providesService(ConcatInjectable(token, () => value));
 
   /**
    * Appends an injectable class factory to the array associated with a specified token in the current Container,
@@ -494,14 +495,16 @@ export class Container<Services = {}> {
   appendClass = <
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
-    Service extends ArrayElement<Services[Token]>,
+    Class extends {
+      readonly dependencies: Tokens;
+      new (...args: Params): InstanceType<Class>;
+    },
+    Params extends MapTokensToTypes<Services, Class["dependencies"]>,
   >(
     token: Token,
-    cls: InjectableClass<Services, Service, Tokens>
-  ) =>
-    this.providesService(
-      ConcatInjectable(token, () => this.providesClass(token, cls).get(token))
-    ) as Container<Services>;
+    cls: Class
+  ): Container<AddService<Services, Token, InstanceType<Class>[]>> =>
+    this.providesService(ConcatInjectable(token, cls.dependencies, (...args: Params) => new cls(...args)));
 
   /**
    * Appends a new service instance to an existing array within the container using an `InjectableFunction`.
@@ -521,15 +524,30 @@ export class Container<Services = {}> {
    * specified by the token.
    */
   append = <
-    Token extends keyof Services,
-    Tokens extends readonly ValidTokens<Services>[],
-    Service extends ArrayElement<Services[Token]>,
+  Token extends keyof Services,
+  Tokens extends readonly ValidTokens<Services>[],
+  // Fn extends {
+  //   (...args: Params): ArrayElement<Services[Token]>;
+  //   token: Token;
+  //   dependencies: Tokens;
+  // },
+  Fn extends InjectableFunction<Services, Tokens, Token, ArrayElement<Services[Token]>>,
+  Params extends MapTokensToTypes<Services, Fn["dependencies"]>,
+  Deps extends ServicesFromTokenizedParams<Tokens, Params>
   >(
-    fn: InjectableFunction<Services, Tokens, Token, Service>
-  ) =>
-    this.providesService(
-      ConcatInjectable(fn.token, () => this.providesService(fn).get(fn.token))
-    ) as Container<Services>;
+    fn: Fn
+  ): Container<AddService<Services, Token, ArrayElement<Services[Token]>[]>> => {
+    type ee = Fn["dependencies"];
+    const i = ConcatInjectable<
+      Token,
+      Tokens,
+      Params,
+      ArrayElement<Services[Token]>[],
+      Deps
+    >(fn.token, fn.dependencies, (...args) => fn(...args));
+    const p = this.providesService(i);
+    return p;
+  };
 
   private providesService<
     Token extends TokenType,

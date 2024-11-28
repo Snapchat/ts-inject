@@ -43,11 +43,15 @@ export type InjectableFunction<
   Service,
 > = Tokens extends readonly ValidTokens<Services>[]
   ? {
-      (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
+      (...args: MapTokensToTypes<Services, Tokens>): Service;
       token: Token;
       dependencies: Tokens;
     }
   : never;
+
+export type MapTokensToTypes<Services, Tokens extends readonly ValidTokens<Services>[]> = AsTuple<
+  CorrespondingServices<Services, Tokens>
+>;
 
 /**
  * Represents a class that can be used as an injectable service within a dependency injection {@link Container}.
