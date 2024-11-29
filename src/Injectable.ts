@@ -80,7 +80,6 @@ export function Injectable(
     );
   }
 
-  // const length = actualLength in fn ? fn[actualLength] as number : fn.length;
   if (fn.length !== 0 && fn.length !== dependencies.length) {
     throw new TypeError(
       "[Injectable] Function arity does not match the number of dependencies. Function has arity " +
