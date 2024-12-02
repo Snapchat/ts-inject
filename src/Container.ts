@@ -421,7 +421,7 @@ export class Container<Services = {}> {
     Token extends TokenType,
     Tokens extends readonly ValidTokens<Services>[],
     Params extends MapTokensToTypes<Services, Tokens>,
-    Service
+    Service,
   >(
     token: Token,
     cls: {
@@ -487,7 +487,7 @@ export class Container<Services = {}> {
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
     Params extends MapTokensToTypes<Services, Tokens>,
-    Service
+    Service,
   >(
     token: Token,
     cls: {
