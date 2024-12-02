@@ -43,23 +43,26 @@ export type InjectableFunction<
   Service,
 > = Tokens extends readonly ValidTokens<Services>[]
   ? {
-      (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
+      (...args: MapTokensToTypes<Services, Tokens>): Service;
       token: Token;
       dependencies: Tokens;
     }
   : never;
 
 /**
- * Represents a class that can be used as an injectable service within a dependency injection {@link Container}.
- * The `InjectableClass` type ensures that the class's dependencies and constructor signature align with
- * the services available in the container, providing strong type safety.
+ * Maps a tuple of tokens to their corresponding service types based on the given Services type mapping.
+ *
+ * @example
+ * ```typescript
+ * type Services = { foo: string; bar: number; };
+ * type Tokens = ['foo', 'bar'];
+ * type Result = MapTokensToTypes<Services, Tokens>;
+ * // Result is [string, number]
+ * ```
  */
-export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly ValidTokens<Services>[]
-  ? {
-      readonly dependencies: Tokens;
-      new (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
-    }
-  : never;
+export type MapTokensToTypes<Services, Tokens extends readonly ValidTokens<Services>[]> = AsTuple<
+  CorrespondingServices<Services, Tokens>
+>;
 
 export type AnyInjectable = InjectableFunction<any, readonly TokenType[], TokenType, any>;
 

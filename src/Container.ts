@@ -1,9 +1,8 @@
 import type { Memoized } from "./memoize";
 import { isMemoized, memoize } from "./memoize";
 import { PartialContainer } from "./PartialContainer";
-import type { AddService, AddServices, InjectableClass, InjectableFunction, TokenType, ValidTokens } from "./types";
-import { ClassInjectable, ConcatInjectable, Injectable } from "./Injectable";
-import { entries } from "./entries";
+import type { AddService, AddServices, MapTokensToTypes, InjectableFunction, TokenType, ValidTokens } from "./types";
+import { ConcatInjectable, Injectable } from "./Injectable";
 
 type MaybeMemoizedFactories<Services> = {
   [K in keyof Services]: (() => Services[K]) | Memoized<() => Services[K]>;
@@ -142,8 +141,8 @@ export class Container<Services = {}> {
    * defines the initial set of services to be contained within the new Container instance.
    * @returns A new Container instance populated with the provided services.
    */
-  static fromObject<Services extends { [s: string]: any }>(services: Services): Container<Services> {
-    return entries(services).reduce(
+  static fromObject<Services extends { [s: TokenType]: any }>(services: Services): Container<Services> {
+    return Object.entries(services).reduce(
       (container, [token, value]) => container.providesValue(token, value),
       new Container({})
     ) as Container<Services>;
@@ -277,7 +276,7 @@ export class Container<Services = {}> {
    * in the provided {@link PartialContainer} initialized as needed.
    */
   run<AdditionalServices, Dependencies, FulfilledDependencies extends Dependencies>(
-    // FullfilledDependencies is assignable to Dependencies -- by specifying Container<FulfilledDependencies> as the
+    // FulfilledDependencies is assignable to Dependencies -- by specifying Container<FulfilledDependencies> as the
     // `this` type, we ensure this Container can provide all the Dependencies required by the PartialContainer.
     this: Container<FulfilledDependencies>,
     container: PartialContainer<AdditionalServices, Dependencies>
@@ -340,7 +339,7 @@ export class Container<Services = {}> {
    *          `PartialContainer`, with services from the `PartialContainer` taking precedence in case of conflicts.
    */
   provides<AdditionalServices, Dependencies, FulfilledDependencies extends Dependencies>(
-    // FullfilledDependencies is assignable to Dependencies -- by specifying Container<FulfilledDependencies> as the
+    // FulfilledDependencies is assignable to Dependencies -- by specifying Container<FulfilledDependencies> as the
     // `this` type, we ensure this Container can provide all the Dependencies required by the PartialContainer.
     this: Container<FulfilledDependencies>,
     container: PartialContainer<AdditionalServices, Dependencies>
@@ -418,11 +417,19 @@ export class Container<Services = {}> {
    *            specifying these dependencies.
    * @returns A new Container instance containing the newly created service, allowing for method chaining.
    */
-  providesClass = <Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
+  providesClass = <
+    Token extends TokenType,
+    Tokens extends readonly ValidTokens<Services>[],
+    Params extends MapTokensToTypes<Services, Tokens>,
+    Service,
+  >(
     token: Token,
-    cls: InjectableClass<Services, Service, Tokens>
+    cls: {
+      readonly dependencies: Tokens;
+      new (...args: Params): Service;
+    }
   ): Container<AddService<Services, Token, Service>> =>
-    this.providesService(ClassInjectable(token, cls)) as Container<AddService<Services, Token, Service>>;
+    this.providesService(Injectable(token, cls.dependencies, (...args: Params) => new cls(...args)));
 
   /**
    * Registers a static value as a service in the container. This method is ideal for services that do not
@@ -455,10 +462,11 @@ export class Container<Services = {}> {
    * @param value - A value to append to the array.
    * @returns The updated Container with the appended value in the specified array.
    */
-  appendValue = <Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
+  appendValue = <Token extends keyof Services>(
     token: Token,
-    value: Service
-  ): Container<Services> => this.providesService(ConcatInjectable(token, () => value)) as Container<Services>;
+    value: ArrayElement<Services[Token]>
+  ): Container<AddService<Services, Token, ArrayElement<Services[Token]>[]>> =>
+    this.providesService(ConcatInjectable(token, () => value));
 
   /**
    * Appends an injectable class factory to the array associated with a specified token in the current Container,
@@ -478,14 +486,16 @@ export class Container<Services = {}> {
   appendClass = <
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
-    Service extends ArrayElement<Services[Token]>,
+    Params extends MapTokensToTypes<Services, Tokens>,
+    Service,
   >(
     token: Token,
-    cls: InjectableClass<Services, Service, Tokens>
-  ): Container<Services> =>
-    this.providesService(
-      ConcatInjectable(token, () => this.providesClass(token, cls).get(token))
-    ) as Container<Services>;
+    cls: {
+      readonly dependencies: Tokens;
+      new (...args: Params): Service;
+    }
+  ): Container<AddService<Services, Token, Service[]>> =>
+    this.providesService(ConcatInjectable(token, cls.dependencies, (...args: Params) => new cls(...args)));
 
   /**
    * Appends a new service instance to an existing array within the container using an `InjectableFunction`.
@@ -507,13 +517,16 @@ export class Container<Services = {}> {
   append = <
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
-    Service extends ArrayElement<Services[Token]>,
+    Fn extends {
+      (...args: Params): ArrayElement<Services[Token]>;
+      token: Token;
+      dependencies: Tokens;
+    },
+    Params extends MapTokensToTypes<Services, Fn["dependencies"]>,
   >(
-    fn: InjectableFunction<Services, Tokens, Token, Service>
-  ): Container<Services> =>
-    this.providesService(
-      ConcatInjectable(fn.token, () => this.providesService(fn).get(fn.token))
-    ) as Container<Services>;
+    fn: Tokens extends readonly TokenType[] ? Fn : never
+  ): Container<AddService<Services, Token, ArrayElement<Services[Token]>[]>> =>
+    this.providesService(ConcatInjectable(fn.token, fn.dependencies, (...args: Params) => fn(...args)));
 
   private providesService<
     Token extends TokenType,

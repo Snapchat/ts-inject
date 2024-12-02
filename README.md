@@ -85,7 +85,6 @@ db.save("user2"); // Log: Saving record: user2
 - **Service**: Any value or instance provided by the Container.
 - **Token**: A unique identifier for each service, used for registration and retrieval within the Container.
 - **InjectableFunction**: Functions that return service instances. They can include dependencies which are injected when the service is requested.
-- **InjectableClass**: Classes that can be instantiated by the Container. Dependencies should be specified in a static "dependencies" field to enable proper injection.
 
 ### API Reference
 

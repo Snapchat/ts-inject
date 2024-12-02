@@ -1,4 +1,4 @@
-import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
+import type { InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
 
 /**
  * Creates an Injectable factory function designed for services without dependencies.
@@ -56,18 +56,15 @@ export function Injectable<Token extends TokenType, Service>(
 export function Injectable<
   Token extends TokenType,
   const Tokens extends readonly TokenType[],
-  Params extends readonly any[],
+  // The function arity (number of arguments) must match the number of dependencies specified
+  Params extends readonly any[] & { length: Tokens["length"] },
   Service,
+  Deps extends ServicesFromTokenizedParams<Tokens, Params>,
 >(
   token: Token,
   dependencies: Tokens,
-  // The function arity (number of arguments) must match the number of dependencies specified – if they don't, we'll
-  // force a compiler error by saying the arguments should be `void[]`. We'll also throw at runtime, so the return
-  // type will be `never`.
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
-): Tokens["length"] extends Params["length"]
-  ? InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service>
-  : never;
+  fn: (...args: Params) => Service
+): InjectableFunction<Deps, Tokens, Token, Service>;
 
 export function Injectable(
   token: TokenType,
@@ -79,11 +76,11 @@ export function Injectable(
 
   if (!fn) {
     throw new TypeError(
-      "[Injectable] Received invalid arguments. The factory function must be either the second " + "or third argument."
+      "[Injectable] Received invalid arguments. The factory function must be either the second or third argument."
     );
   }
 
-  if (fn.length !== dependencies.length) {
+  if (fn.length !== 0 && fn.length !== dependencies.length) {
     throw new TypeError(
       "[Injectable] Function arity does not match the number of dependencies. Function has arity " +
         `${fn.length}, but ${dependencies.length} dependencies were specified.` +
@@ -117,57 +114,6 @@ export function InjectableCompat<
   fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
 ): ReturnType<typeof Injectable> {
   return Injectable(token, dependencies, fn);
-}
-
-/**
- * Creates an Injectable factory function for an InjectableClass.
- *
- * @example
- * ```ts
- * class Logger {
- *   static dependencies = ["config"] as const;
- *   constructor(private config: string) {}
- *   public print() {
- *     console.log(this.config);
- *   }
- * }
- *
- * const container = Container
- *   .providesValue("config", "value")
- *   .provides(ClassInjectable("logger", Logger));
- *
- * container.get("logger").print(); // prints "value"
- * ```
- *
- * It is recommended to use the `Container.provideClass()` method. The example above is equivalent to:
- * ```ts
- * const container = Container
- *   .providesValue("config", "value")
- *   .providesClass("logger", Logger);
- * container.get("logger").print(); // prints "value"
- * ```
- *
- * @param token Token identifying the Service.
- * @param cls InjectableClass to instantiate.
- */
-export function ClassInjectable<
-  Class extends InjectableClass<any, any, any>,
-  Dependencies extends ConstructorParameters<Class>,
-  Token extends TokenType,
-  Tokens extends Class["dependencies"],
->(
-  token: Token,
-  cls: Class
-): InjectableFunction<ServicesFromTokenizedParams<Tokens, Dependencies>, Tokens, Token, ConstructorReturnType<Class>>;
-
-export function ClassInjectable(
-  token: TokenType,
-  cls: InjectableClass<any, any, readonly TokenType[]>
-): InjectableFunction<any, readonly TokenType[], TokenType, any> {
-  const factory = (...args: any[]) => new cls(...args);
-  factory.token = token;
-  factory.dependencies = cls.dependencies;
-  return factory;
 }
 
 /**
@@ -219,12 +165,13 @@ export function ConcatInjectable<Token extends TokenType, Service>(
 export function ConcatInjectable<
   Token extends TokenType,
   const Tokens extends readonly TokenType[],
-  Params extends readonly any[],
+  Params extends readonly any[] & { length: Tokens["length"] },
   Service,
+  Deps extends ServicesFromTokenizedParams<Tokens, Params>,
 >(
   token: Token,
   dependencies: Tokens,
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+  fn: (...args: Params) => Service
 ): InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service[]>;
 
 export function ConcatInjectable(
@@ -242,9 +189,9 @@ export function ConcatInjectable(
     );
   }
 
-  if (fn.length !== dependencies.length) {
+  if (fn.length !== 0 && fn.length !== dependencies.length) {
     throw new TypeError(
-      "[Injectable] Function arity does not match the number of dependencies. Function has arity " +
+      "[ConcatInjectable] Function arity does not match the number of dependencies. Function has arity " +
         `${fn.length}, but ${dependencies.length} dependencies were specified.` +
         `\nDependencies: ${JSON.stringify(dependencies)}`
     );
@@ -257,5 +204,3 @@ export function ConcatInjectable(
   factory.dependencies = [token, ...dependencies];
   return factory;
 }
-
-export type ConstructorReturnType<T> = T extends new (...args: any) => infer C ? C : any;
