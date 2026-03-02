@@ -29,53 +29,81 @@ This quick start guide demonstrates how to define services, register them in a c
 Define a couple of services. For simplicity, we'll use a `Logger` service and a `Database` service, where `Database` depends on `Logger` for logging purposes.
 
 ```ts
-// Logger service definition
 class Logger {
   log(message: string) {
     console.log(`Log: ${message}`);
   }
 }
 
-// Database service depends on Logger
 class Database {
+  static dependencies = ["Logger"] as const;
   constructor(private logger: Logger) {}
 
   save(record: string) {
     this.logger.log(`Saving record: ${record}`);
-    // Assume record saving logic here
   }
 }
 ```
 
 #### Setting Up the Container
 
-With `ts-inject`, you can easily set up a container to manage these services:
+With `ts-inject`, you can set up a container to manage these services using `providesValue` and `providesClass`:
+
+```ts
+import { Container } from "@snap/ts-inject";
+
+const container = Container
+  .providesValue("Logger", new Logger())
+  .providesClass("Database", Database);
+
+const db = container.get("Database");
+db.save("user1"); // Log: Saving record: user1
+```
+
+#### Custom Factory Functions
+
+When a service needs custom instantiation logic — such as transformation, conditional setup, or isn't a simple class — use `Injectable()` with `.provides()`:
 
 ```ts
 import { Container, Injectable } from "@snap/ts-inject";
 
-// Define Injectable factory functions for services
-const loggerFactory = Injectable("Logger", () => new Logger());
-const databaseFactory = Injectable("Database", ["Logger"] as const, (logger: Logger) => new Database(logger));
-
-// Create a container and register services
-const container = Container.provides(loggerFactory).provides(databaseFactory);
-
-// Now, retrieve the Database service from the container
-const db = container.get("Database");
-db.save("user1"); // Log: Saving record: user1
+const container = Container
+  .providesValue("apiUrl", "https://api.example.com")
+  .provides(Injectable("httpClient", ["apiUrl"], (url: string) => createHttpClient(url)));
 ```
+
+`providesValue` and `providesClass` cover the vast majority of use cases. Reach for `Injectable()` only when you need a factory function with custom logic.
 
 #### Composable Containers
 
 `ts-inject` supports composable containers, allowing you to modularize service registration:
 
 ```ts
-const baseContainer = Container.provides(loggerFactory);
-const appContainer = Container.provides(baseContainer).provide(databaseFactory);
+const baseContainer = Container.providesValue("Logger", new Logger());
+const appContainer = baseContainer.providesClass("Database", Database);
 
-const db: Database = appContainer.get("Database");
+const db = appContainer.get("Database");
 db.save("user2"); // Log: Saving record: user2
+```
+
+You can also bootstrap a container from a plain object with `fromObject`:
+
+```ts
+const configContainer = Container.fromObject({ apiUrl: "https://api.example.com", timeout: 5000 });
+```
+
+#### Multi-Binding
+
+Containers support appending to array-typed services, useful for plugin systems and extensible pipelines:
+
+```ts
+const container = Container
+  .providesValue("plugins", [] as Plugin[])
+  .appendClass("plugins", AuthPlugin)
+  .appendClass("plugins", LoggingPlugin)
+  .appendValue("plugins", { name: "inline", run: () => {} });
+
+container.get("plugins"); // [AuthPlugin, LoggingPlugin, { name: "inline", ... }]
 ```
 
 ### Key Concepts
@@ -84,8 +112,8 @@ db.save("user2"); // Log: Saving record: user2
 - **PartialContainer**: Similar to a Container but allows services to be registered without defining all dependencies upfront. Unlike a regular Container, it does not support retrieving services directly.
 - **Service**: Any value or instance provided by the Container.
 - **Token**: A unique identifier for each service, used for registration and retrieval within the Container.
-- **InjectableFunction**: Functions that return service instances. They can include dependencies which are injected when the service is requested.
-- **InjectableClass**: Classes that can be instantiated by the Container. Dependencies should be specified in a static "dependencies" field to enable proper injection.
+- **InjectableClass**: Classes that can be instantiated by the Container. Dependencies are specified in a static `dependencies` field to enable automatic injection via `providesClass`.
+- **InjectableFunction**: The lower-level primitive used by `Injectable()` to create factory functions with explicit dependency lists. Use this when `providesValue`/`providesClass` don't fit your needs.
 
 ### API Reference
 

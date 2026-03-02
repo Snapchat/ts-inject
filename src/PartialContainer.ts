@@ -64,14 +64,14 @@ type PartialContainerFactories<Services> = {
  *
  * Here's an example of PartialContainer usage:
  * ```ts
- * // We can provide fooFactory, even though the PartialContainer doesn't fulfill the Bar dependency.
- * const fooFactory = Injectable('Foo', ['Bar'] as const, (bar: Bar) => new Foo(bar))
- * const partialContainer = new PartialContainer({}).provide(fooFactory)
+ * // We can register Foo, even though the PartialContainer doesn't fulfill the Bar dependency.
+ * const partialContainer = new PartialContainer({})
+ *   .providesClass('Foo', Foo) // Foo declares static dependencies = ['Bar'] as const
  *
- * const barFactory = Injectable('Bar', () => new Bar())
- * const dependenciesContainer = Container.provides(barFactory)
- *
- * const combinedContainer = dependenciesContainer.provides(partialContainer)
+ * // Provide the missing dependency via a Container
+ * const combinedContainer = Container
+ *   .providesValue('Bar', new Bar())
+ *   .provides(partialContainer)
  *
  * // We can resolve Foo, because the combined container includes Bar, so all of Foo's dependencies are now met.
  * const foo = combinedContainer.get('Foo')

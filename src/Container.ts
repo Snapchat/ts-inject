@@ -45,11 +45,12 @@ type ArrayElement<A> = A extends readonly (infer T)[] ? T : never;
  * @example
  *
  * ```ts
- * const fooFactory = Injectable('Foo', () => new Foo())
- * const barFactory = Injectable('Bar', ['Foo'] as const, (foo: Foo) => new Bar(foo))
- * const container = Container.provides(fooFactory).provides(barFactory)
+ * const container = Container
+ *   .providesValue('config', { port: 3000 })
+ *   .providesClass('Logger', Logger)
+ *   .providesClass('Server', Server)
  *
- * const bar = container.get('Bar')
+ * const server = container.get('Server')
  * ```
  */
 export class Container<Services = {}> {
@@ -58,11 +59,9 @@ export class Container<Services = {}> {
    *
    * @example
    * ```ts
-   * // Register a single service
-   * const container = Container.provides(Injectable('Logger', () => new Logger()));
-   *
-   * // Extend container with another container or partial container
-   * const extendedContainer = Container.provide(existingContainer);
+   * // Extend a container with a partial container or another container
+   * const container = Container.provides(existingPartialContainer);
+   * const container2 = Container.provides(existingContainer);
    * ```
    */
   static provides<Services>(container: PartialContainer<Services, {}> | Container<Services>): Container<Services>;
@@ -72,9 +71,12 @@ export class Container<Services = {}> {
    *
    * @example
    * ```ts
-   * // Register a single service with no dependencies
+   * // Register a single service using an InjectableFunction
    * const container = Container.provides(Injectable('Logger', () => new Logger()));
    * ```
+   *
+   * **Tip:** For services without dependencies, prefer
+   * {@link Container.providesValue | providesValue} or {@link Container.providesClass | providesClass}.
    */
   static provides<Token extends TokenType, Service>(
     fn: InjectableFunction<{}, [], Token, Service>
@@ -190,7 +192,7 @@ export class Container<Services = {}> {
    * @example
    * ```ts
    * // Create the original container and provide the UserListService
-   * const originalContainer = Container.provides(Injectable('UserListService', () => new UserListService()));
+   * const originalContainer = Container.providesClass('UserListService', UserListService);
    *
    * // Create a new Container copy with UserListService scoped, allowing for independent user lists
    * const newListContainer = originalContainer.copy(['UserListService']);
@@ -266,7 +268,7 @@ export class Container<Services = {}> {
    *
    * // Setup the main container with a request service and run the initializers
    * const container = Container
-   *   .provides(Injectable("request", () => (url: string) => fetch(url)))
+   *   .providesValue("request", (url: string) => fetch(url))
    *   .run(initializers);
    *
    * // At this point, `initCache` and `setupReporter` have been executed using the `request` service.
@@ -296,7 +298,7 @@ export class Container<Services = {}> {
    * ```ts
    * // Setup a container with a request service and directly run the `initCache` service
    * const container = Container
-   *   .provides(Injectable("request", () => (url: string) => fetch(url)))
+   *   .providesValue("request", (url: string) => fetch(url))
    *   .run(Injectable("initCache", ["request"], (request: Request) => fetchAndPopulateCache(request)));
    *
    * // At this point, `initCache` has been executed using the `request` service.

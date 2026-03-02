@@ -4,6 +4,10 @@ import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, 
  * Creates an Injectable factory function designed for services without dependencies.
  * This is useful for simple services or values that don't depend on other parts of the system.
  *
+ * **Tip:** For simple cases, prefer {@link Container.providesValue | Container.providesValue()}
+ * or {@link Container.providesClass | Container.providesClass()} instead. Use `Injectable()` when
+ * you need custom factory logic.
+ *
  * @example
  * ```ts
  * const container = Container.provides(Injectable("MyService", () => new MyService()));
