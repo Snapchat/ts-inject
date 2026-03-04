@@ -52,9 +52,7 @@ With `ts-inject`, you can set up a container to manage these services using `pro
 ```ts
 import { Container } from "@snap/ts-inject";
 
-const container = Container
-  .providesValue("Logger", new Logger())
-  .providesClass("Database", Database);
+const container = Container.providesValue("Logger", new Logger()).providesClass("Database", Database);
 
 const db = container.get("Database");
 db.save("user1"); // Log: Saving record: user1
@@ -67,9 +65,9 @@ When a service needs custom instantiation logic — such as transformation, cond
 ```ts
 import { Container, Injectable } from "@snap/ts-inject";
 
-const container = Container
-  .providesValue("apiUrl", "https://api.example.com")
-  .provides(Injectable("httpClient", ["apiUrl"], (url: string) => createHttpClient(url)));
+const container = Container.providesValue("apiUrl", "https://api.example.com").provides(
+  Injectable("httpClient", ["apiUrl"], (url: string) => createHttpClient(url))
+);
 ```
 
 `providesValue` and `providesClass` cover the vast majority of use cases. Reach for `Injectable()` only when you need a factory function with custom logic.
@@ -97,8 +95,7 @@ const configContainer = Container.fromObject({ apiUrl: "https://api.example.com"
 Containers support appending to array-typed services, useful for plugin systems and extensible pipelines:
 
 ```ts
-const container = Container
-  .providesValue("plugins", [] as Plugin[])
+const container = Container.providesValue("plugins", [] as Plugin[])
   .appendClass("plugins", AuthPlugin)
   .appendClass("plugins", LoggingPlugin)
   .appendValue("plugins", { name: "inline", run: () => {} });
