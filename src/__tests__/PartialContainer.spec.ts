@@ -95,6 +95,79 @@ describe("PartialContainer", () => {
     });
   });
 
+  describe("fromObject", () => {
+    test("creates a PartialContainer from a plain object", () => {
+      const partial = PartialContainer.fromObject({ foo: 1, bar: "baz" });
+      const combined = Container.provides(partial);
+      expect(combined.get("foo")).toBe(1);
+      expect(combined.get("bar")).toBe("baz");
+    });
+  });
+
+  describe("when providing another PartialContainer", () => {
+    test("merges services from both PartialContainers", () => {
+      const partial1 = new PartialContainer({}).provides("A", () => "a");
+      const partial2 = new PartialContainer({}).provides("B", () => "b");
+      const merged = partial1.provides(partial2);
+      const combined = Container.provides(merged);
+      expect(combined.get("A")).toBe("a");
+      expect(combined.get("B")).toBe("b");
+    });
+
+    test("services from the provided PartialContainer take precedence", () => {
+      const partial1 = new PartialContainer({}).provides("A", () => "old");
+      const partial2 = new PartialContainer({}).provides("A", () => "new");
+      const merged = partial1.provides(partial2);
+      expect(Container.provides(merged).get("A")).toBe("new");
+    });
+
+    test("combines dependencies, excluding services provided by either partial", () => {
+      const partial1 = new PartialContainer({}).provides("A", ["X"] as const, (x: string) => x);
+      const partial2 = new PartialContainer({}).provides("X", () => "x-value");
+      // partial1 needs X, partial2 provides X — merged should have no unresolved deps
+      const merged = partial1.provides(partial2);
+      const combined = Container.provides(merged);
+      expect(combined.get("A")).toBe("x-value");
+    });
+
+    test("tracks unresolved dependencies from both partials", () => {
+      const partial1 = new PartialContainer({}).provides("A", ["X"] as const, (x: string) => x);
+      const partial2 = new PartialContainer({}).provides("B", ["Y"] as const, (y: number) => y);
+      const merged = partial1.provides(partial2);
+      // @ts-expect-error both X and Y are unresolved
+      Container.provides(merged);
+      // Providing both deps should work
+      Container.providesValue("X", "x").providesValue("Y", 1).provides(merged);
+    });
+  });
+
+  describe("when providing a Container", () => {
+    test("merges Container services into the PartialContainer", () => {
+      const partial = new PartialContainer({}).provides("A", () => "a");
+      const existingContainer = Container.providesValue("B", "b");
+      const merged = partial.provides(existingContainer);
+      const combined = Container.provides(merged);
+      expect(combined.get("A")).toBe("a");
+      expect(combined.get("B")).toBe("b");
+    });
+
+    test("Container services satisfy PartialContainer dependencies", () => {
+      const partial = new PartialContainer({}).provides("A", ["B"] as const, (b: string) => `got ${b}`);
+      const existingContainer = Container.providesValue("B", "b-value");
+      const merged = partial.provides(existingContainer);
+      // B is now provided by the merged container, so no external deps needed
+      const combined = Container.provides(merged);
+      expect(combined.get("A")).toBe("got b-value");
+    });
+
+    test("Container services take precedence over existing PartialContainer services", () => {
+      const partial = new PartialContainer({}).provides("A", () => "old");
+      const existingContainer = Container.providesValue("A", "new");
+      const merged = partial.provides(existingContainer);
+      expect(Container.provides(merged).get("A")).toBe("new");
+    });
+  });
+
   describe("when providing a Service using inline token and factory", () => {
     test("provides a zero-dep service via provides(token, factory)", () => {
       const partial = new PartialContainer({}).provides("TestService", () => "testService");

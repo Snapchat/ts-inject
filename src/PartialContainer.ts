@@ -4,6 +4,7 @@ import { memoize } from "./memoize";
 import type { Container } from "./Container";
 import type {
   AddService,
+  AddServices,
   InjectableClass,
   InjectableFunction,
   ServicesFromTokenizedParams,
@@ -78,6 +79,28 @@ type PartialContainerFactories<Services> = {
  * ```
  */
 export class PartialContainer<Services = {}, Dependencies = {}> {
+  /**
+   * Creates a new PartialContainer from a plain object containing service definitions.
+   * Each property of the object is registered as a value service with no dependencies.
+   *
+   * @example
+   * ```ts
+   * const partial = PartialContainer.fromObject({ apiUrl: "https://api.example.com", timeout: 5000 });
+   * const container = Container.provides(partial);
+   * console.log(container.get('apiUrl')); // "https://api.example.com"
+   * ```
+   *
+   * @param services A plain object where each property maps to a service value.
+   * @returns A new PartialContainer populated with the provided services and no dependencies.
+   */
+  static fromObject<Services extends { [s: string]: any }>(services: Services): PartialContainer<Services, {}> {
+    let container: PartialContainer<any, any> = new PartialContainer({});
+    for (const [token, value] of entries(services)) {
+      container = container.providesValue(token, value);
+    }
+    return container as PartialContainer<Services, {}>;
+  }
+
   constructor(private readonly injectables: Injectables<Services, Dependencies>) {}
 
   /**
@@ -144,6 +167,31 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
       >
     : never;
 
+  /**
+   * Merges services from another PartialContainer into this one.
+   * Dependencies from both containers are combined, with any dependencies satisfied by
+   * the other container's services removed.
+   *
+   * @param container The PartialContainer whose services will be merged.
+   */
+  provides<AdditionalServices, AdditionalDependencies>(
+    container: PartialContainer<AdditionalServices, AdditionalDependencies>
+  ): PartialContainer<
+    AddServices<Services, AdditionalServices>,
+    ExcludeKey<AddDependencies<Dependencies, AdditionalDependencies>, keyof Services | keyof AdditionalServices>
+  >;
+
+  /**
+   * Merges services from a Container into this PartialContainer.
+   * Since Container services are fully resolved, they add no new dependencies
+   * and may satisfy existing ones.
+   *
+   * @param container The Container whose services will be merged.
+   */
+  provides<AdditionalServices>(
+    container: Container<AdditionalServices>
+  ): PartialContainer<AddServices<Services, AdditionalServices>, ExcludeKey<Dependencies, keyof AdditionalServices>>;
+
   provides(first: any, second?: any, third?: any): PartialContainer<any, any> {
     // Two-arg form: provides(token, factory)
     if (typeof second === "function") {
@@ -154,7 +202,23 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
       const fn = Injectable(first, second, third);
       return new PartialContainer({ ...this.injectables, [first]: fn } as any);
     }
-    // Original single-arg form
+    // provides(PartialContainer)
+    if (first instanceof PartialContainer) {
+      return new PartialContainer({ ...this.injectables, ...first.injectables } as any);
+    }
+    // provides(Container) — duck-type via 'factories' property
+    if (first && "factories" in first) {
+      const containerInjectables: any = {};
+      for (const key of Object.keys(first.factories)) {
+        const factory = first.factories[key];
+        const fn: any = () => factory();
+        fn.token = key;
+        fn.dependencies = [];
+        containerInjectables[key] = fn;
+      }
+      return new PartialContainer({ ...this.injectables, ...containerInjectables } as any);
+    }
+    // Original single-arg form: provides(InjectableFunction)
     return new PartialContainer({ ...this.injectables, [first.token]: first } as any);
   }
 
