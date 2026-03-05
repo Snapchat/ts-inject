@@ -97,6 +97,51 @@ describe("Container", () => {
     });
   });
 
+  describe("when providing a Service using inline token and factory", () => {
+    test("provides a zero-dep service via provides(token, factory)", () => {
+      const containerWithService = Container.provides("TestService", () => "testService");
+      expect(containerWithService.get("TestService")).toBe("testService");
+    });
+
+    test("provides a zero-dep service on an existing container", () => {
+      const containerWithService = container.providesValue("value", 1).provides("TestService", () => "testService");
+      expect(containerWithService.get("TestService")).toBe("testService");
+      expect(containerWithService.get("value")).toBe(1);
+    });
+
+    test("provides a service with dependencies via provides(token, deps, factory)", () => {
+      const containerWithService = Container.providesValue("dep", 42).provides(
+        "TestService",
+        ["dep"] as const,
+        (dep: number) => `value is ${dep}`
+      );
+      expect(containerWithService.get("TestService")).toBe("value is 42");
+    });
+
+    test("the factory is lazily called and memoized", () => {
+      const factory = jest.fn(() => "testService");
+      const containerWithService = Container.provides("TestService", factory);
+      expect(factory).not.toHaveBeenCalled();
+      containerWithService.get("TestService");
+      containerWithService.get("TestService");
+      expect(factory).toHaveBeenCalledTimes(1);
+    });
+
+    test("type error when dependency token does not exist", () => {
+      // @ts-expect-error 'missing' is not a valid token
+      Container.providesValue("dep", 1).provides("service", ["missing"] as const, (x: any) => x);
+    });
+
+    test("type error when factory param type does not match dependency", () => {
+      Container.providesValue("dep", 42).provides(
+        "service",
+        ["dep"] as const,
+        // @ts-expect-error dep is number, not string
+        (dep: string) => dep
+      );
+    });
+  });
+
   describe("when providing a Service with dependencies", () => {
     let dependency: InjectableFunction<any, [], "TestDependency", string>;
     let injectable: InjectableFunction<{ TestDependency: string }, readonly ["TestDependency"], "TestService", string>;

@@ -1,7 +1,15 @@
 import type { Memoized } from "./memoize";
 import { isMemoized, memoize } from "./memoize";
 import { PartialContainer } from "./PartialContainer";
-import type { AddService, AddServices, InjectableClass, InjectableFunction, TokenType, ValidTokens } from "./types";
+import type {
+  AddService,
+  AddServices,
+  CorrespondingServices,
+  InjectableClass,
+  InjectableFunction,
+  TokenType,
+  ValidTokens,
+} from "./types";
 import { ClassInjectable, ConcatInjectable, Injectable } from "./Injectable";
 import { entries } from "./entries";
 
@@ -82,15 +90,28 @@ export class Container<Services = {}> {
     fn: InjectableFunction<{}, [], Token, Service>
   ): Container<AddService<{}, Token, Service>>;
 
-  static provides(
-    fnOrContainer: InjectableFunction<{}, [], TokenType, any> | PartialContainer<any, {}> | Container<any>
-  ): Container<any> {
+  /**
+   * Creates a new [Container] by providing a Service via a zero-argument factory function.
+   * The factory is called lazily on first retrieval and the result is memoized.
+   *
+   * @example
+   * ```ts
+   * const container = Container.provides('Logger', () => new Logger());
+   * ```
+   */
+  static provides<Token extends TokenType, Service>(
+    token: Token,
+    fn: () => Service
+  ): Container<AddService<{}, Token, Service>>;
+
+  static provides(first: any, second?: any): Container<any> {
+    if (typeof second === "function") return new Container({}).provides(first, second);
     // Although the `provides` method has overloads that match both members of the union type separately, it does
     // not match the union type itself, so the compiler forces us to branch and handle each type within the union
     // separately. (Maybe in the future the compiler will decide to infer this, but for now this is necessary.)
-    if (fnOrContainer instanceof PartialContainer) return new Container({}).provides(fnOrContainer);
-    if (fnOrContainer instanceof Container) return new Container({}).provides(fnOrContainer);
-    return new Container({}).provides(fnOrContainer);
+    if (first instanceof PartialContainer) return new Container({}).provides(first);
+    if (first instanceof Container) return new Container({}).provides(first);
+    return new Container({}).provides(first);
   }
 
   /**
@@ -389,24 +410,69 @@ export class Container<Services = {}> {
     fn: InjectableFunction<Services, Tokens, Token, Service>
   ): Container<AddService<Services, Token, Service>>;
 
-  provides<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service, AdditionalServices>(
-    fnOrContainer:
-      | InjectableFunction<Services, Tokens, Token, Service>
-      | PartialContainer<AdditionalServices, Services>
-      | Container<AdditionalServices>
-  ): Container<any> {
-    if (fnOrContainer instanceof PartialContainer || fnOrContainer instanceof Container) {
-      const factories =
-        fnOrContainer instanceof PartialContainer ? fnOrContainer.getFactories(this) : fnOrContainer.factories;
+  /**
+   * Registers a new service using a zero-argument factory function.
+   * The factory is called lazily on first retrieval and the result is memoized.
+   *
+   * @example
+   * ```ts
+   * const container = Container
+   *   .providesValue('config', { port: 3000 })
+   *   .provides('Logger', () => new Logger())
+   * ```
+   *
+   * @param token A unique Token identifying the service.
+   * @param fn A zero-argument factory function that creates the service.
+   * @returns A new Container with the service registered.
+   */
+  provides<Token extends TokenType, Service>(
+    token: Token,
+    fn: () => Service
+  ): Container<AddService<Services, Token, Service>>;
+
+  /**
+   * Registers a new service using a factory function with dependencies.
+   * Dependencies are specified as tokens and resolved from the container when the factory is called.
+   *
+   * @example
+   * ```ts
+   * const container = Container
+   *   .providesValue('config', { port: 3000 })
+   *   .provides('Server', ['config'] as const, (config: Config) => new Server(config))
+   * ```
+   *
+   * @param token A unique Token identifying the service.
+   * @param dependencies A readonly array of tokens for the factory's dependencies.
+   * @param fn A factory function whose parameters match the resolved dependency types.
+   * @returns A new Container with the service registered.
+   */
+  provides<Token extends TokenType, const Tokens extends readonly ValidTokens<Services>[], Service>(
+    token: Token,
+    dependencies: Tokens,
+    fn: (...args: CorrespondingServices<Services, Tokens> extends infer T extends readonly any[] ? T : never) => Service
+  ): Container<AddService<Services, Token, Service>>;
+
+  provides(first: any, second?: any, third?: any): Container<any> {
+    // Two-arg form: provides(token, factory)
+    if (typeof second === "function") {
+      return this.providesService(Injectable(first, second));
+    }
+    // Three-arg form: provides(token, dependencies, factory)
+    if (Array.isArray(second) && typeof third === "function") {
+      return this.providesService(Injectable(first, second, third) as any);
+    }
+    // Original single-arg forms
+    if (first instanceof PartialContainer || first instanceof Container) {
+      const factories = first instanceof PartialContainer ? first.getFactories(this) : first.factories;
       // Safety: `this.factories` and `factories` are both properly type checked, so merging them produces
       // a Factories object with keys from both Services and AdditionalServices. The compiler is unable to
       // infer that Factories<A> & Factories<B> == Factories<A & B>, so the cast is required.
       return new Container({
         ...this.factories,
         ...factories,
-      } as unknown as MaybeMemoizedFactories<AddServices<Services, AdditionalServices>>);
+      } as unknown as MaybeMemoizedFactories<AddServices<Services, any>>);
     }
-    return this.providesService(fnOrContainer);
+    return this.providesService(first);
   }
 
   /**
