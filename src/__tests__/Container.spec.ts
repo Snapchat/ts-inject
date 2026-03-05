@@ -310,6 +310,20 @@ describe("Container", () => {
       expect(container.get("service")).toEqual([1, 2, 3]);
     });
 
+    test("appends zero-dep factory via append(token, factory)", () => {
+      const container = Container.providesValue("service", [] as number[])
+        .append("service", () => 1)
+        .append("service", () => 2);
+      expect(container.get("service")).toEqual([1, 2]);
+    });
+
+    test("appends factory with dependencies via append(token, deps, factory)", () => {
+      const container = Container.providesValue("value", 10)
+        .providesValue("service", [] as number[])
+        .append("service", ["value"] as const, (value: number) => value * 2);
+      expect(container.get("service")).toEqual([20]);
+    });
+
     test("errors when the token is not registered", () => {
       // @ts-expect-error
       new Container({}).appendValue("service", 1);

@@ -572,16 +572,91 @@ export class Container<Services = {}> {
    * @returns The updated Container, now including the new service instance appended to the array
    * specified by the token.
    */
-  append = <
+  /**
+   * Appends a new service instance to an existing array within the container using a zero-argument factory function.
+   *
+   * @example
+   * ```ts
+   * const container = Container.fromObject({ services: [] as Service[] });
+   * const newContainer = container.append('services', () => new Service());
+   * ```
+   *
+   * @param token A unique Token corresponding to the previously defined typed array.
+   * @param fn A zero-argument factory function that returns the service to append.
+   * @returns The updated Container with the new service instance appended.
+   */
+  append<Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
+    token: Token,
+    fn: () => Service
+  ): Container<Services>;
+
+  /**
+   * Appends a new service instance to an existing array within the container using a factory function
+   * with dependencies.
+   *
+   * @example
+   * ```ts
+   * const container = Container
+   *   .providesValue('config', { url: '...' })
+   *   .providesValue('services', [] as Service[])
+   *   .append('services', ['config'] as const, (config: Config) => new Service(config));
+   * ```
+   *
+   * @param token A unique Token corresponding to the previously defined typed array.
+   * @param dependencies A readonly array of tokens for the factory's dependencies.
+   * @param fn A factory function whose parameters match the resolved dependency types.
+   * @returns The updated Container with the new service instance appended.
+   */
+  append<
+    Token extends keyof Services,
+    const Tokens extends readonly ValidTokens<Services>[],
+    Service extends ArrayElement<Services[Token]>,
+  >(
+    token: Token,
+    dependencies: Tokens,
+    fn: (...args: CorrespondingServices<Services, Tokens> extends infer T extends readonly any[] ? T : never) => Service
+  ): Container<Services>;
+
+  /**
+   * Appends a new service instance to an existing array within the container using an `InjectableFunction`.
+   *
+   * @example
+   * ```ts
+   * const container = Container.fromObject({ services: [] as Service[] });
+   * const newContainer = container.append(Injectable('services', () => new Service()));
+   * console.log(newContainer.get('services').length); // prints 1;
+   * ```
+   *
+   * @param fn - An injectable function that returns the Service.
+   * @returns The updated Container, now including the new service instance appended to the array
+   * specified by the token.
+   */
+  append<
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
     Service extends ArrayElement<Services[Token]>,
-  >(
-    fn: InjectableFunction<Services, Tokens, Token, Service>
-  ): Container<Services> =>
-    this.providesService(
-      ConcatInjectable(fn.token, () => this.providesService(fn).get(fn.token))
+  >(fn: InjectableFunction<Services, Tokens, Token, Service>): Container<Services>;
+
+  append(first: any, second?: any, third?: any): Container<Services> {
+    let token: any;
+    let fn: any;
+    if (typeof second === "function") {
+      // Two-arg form: append(token, factory)
+      token = first;
+      fn = Injectable(first as string, second);
+    } else if (Array.isArray(second) && typeof third === "function") {
+      // Three-arg form: append(token, dependencies, factory)
+      token = first;
+      fn = Injectable(first as string, second, third);
+    } else {
+      // Original single-arg form
+      token = first.token;
+      fn = first;
+    }
+    return this.providesService(
+      ConcatInjectable(token, () => this.providesService(fn as any).get(token))
     ) as Container<Services>;
+  }
 
   private providesService<
     Token extends TokenType,

@@ -95,6 +95,33 @@ describe("PartialContainer", () => {
     });
   });
 
+  describe("when providing a Service using inline token and factory", () => {
+    test("provides a zero-dep service via provides(token, factory)", () => {
+      const partial = new PartialContainer({}).provides("TestService", () => "testService");
+      const combined = Container.provides(partial);
+      expect(combined.get("TestService")).toBe("testService");
+    });
+
+    test("provides a service with dependencies via provides(token, deps, factory)", () => {
+      const partial = new PartialContainer({}).provides(
+        "TestService",
+        ["dep"] as const,
+        (dep: string) => `value is ${dep}`
+      );
+      const combined = Container.providesValue("dep", "hello").provides(partial);
+      expect(combined.get("TestService")).toBe("value is hello");
+    });
+
+    test("tracks unresolved dependencies from inline factory", () => {
+      const partial = new PartialContainer({}).provides("TestService", ["dep"] as const, (dep: string) => dep);
+      // @ts-expect-error should fail because 'dep' is not provided
+      Container.provides(partial);
+
+      // succeeds when dependency is provided
+      Container.providesValue("dep", "hello").provides(partial);
+    });
+  });
+
   describe("when providing a Service using the same Token as an existing Service", () => {
     describe("provided by the PartialContainer", () => {
       describe("and the new Service does not depend on the old Service", () => {

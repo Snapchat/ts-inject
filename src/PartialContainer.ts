@@ -108,8 +108,54 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
       AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
       keyof Services
     >
-  > {
-    return new PartialContainer({ ...this.injectables, [fn.token]: fn } as any);
+  >;
+
+  /**
+   * Create a new PartialContainer which provides a Service created by a zero-argument factory function.
+   *
+   * @param token A unique Token identifying the service.
+   * @param fn A zero-argument factory function that creates the service.
+   */
+  provides<Token extends TokenType, Service>(
+    token: Token,
+    fn: () => Service
+  ): PartialContainer<AddService<Services, Token, Service>, ExcludeKey<Dependencies, Token>>;
+
+  /**
+   * Create a new PartialContainer which provides a Service created by a factory function with dependencies.
+   * Dependencies that are not already provided by this PartialContainer will be tracked and must be
+   * fulfilled by the Container this PartialContainer is eventually provided to.
+   *
+   * @param token A unique Token identifying the service.
+   * @param dependencies A readonly array of tokens for the factory's dependencies.
+   * @param fn A factory function whose parameters match the dependencies.
+   */
+  provides<Token extends TokenType, const Tokens extends readonly TokenType[], Params extends readonly any[], Service>(
+    token: Token,
+    dependencies: Tokens,
+    fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+  ): Tokens["length"] extends Params["length"]
+    ? PartialContainer<
+        AddService<Services, Token, Service>,
+        ExcludeKey<
+          AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, Params>>,
+          keyof Services
+        >
+      >
+    : never;
+
+  provides(first: any, second?: any, third?: any): PartialContainer<any, any> {
+    // Two-arg form: provides(token, factory)
+    if (typeof second === "function") {
+      return new PartialContainer({ ...this.injectables, [first]: Injectable(first, second) } as any);
+    }
+    // Three-arg form: provides(token, dependencies, factory)
+    if (Array.isArray(second) && typeof third === "function") {
+      const fn = Injectable(first, second, third);
+      return new PartialContainer({ ...this.injectables, [first]: fn } as any);
+    }
+    // Original single-arg form
+    return new PartialContainer({ ...this.injectables, [first.token]: first } as any);
   }
 
   /**
