@@ -58,19 +58,23 @@ const db = container.get("Database");
 db.save("user1"); // Log: Saving record: user1
 ```
 
-#### Custom Factory Functions
+#### Inline Factory Functions
 
-When a service needs custom instantiation logic — such as transformation, conditional setup, or isn't a simple class — use `Injectable()` with `.provides()`:
+When a service needs custom creation logic, pass a factory function directly to `provides`:
 
 ```ts
-import { Container, Injectable } from "@snap/ts-inject";
+import { Container } from "@snap/ts-inject";
 
-const container = Container.providesValue("apiUrl", "https://api.example.com").provides(
-  Injectable("httpClient", ["apiUrl"], (url: string) => createHttpClient(url))
-);
+// Zero-dependency lazy factory
+const container = Container.provides("Logger", () => new Logger());
+
+// Factory with dependencies — tokens are resolved from the container
+const appContainer = container
+  .providesValue("apiUrl", "https://api.example.com")
+  .provides("httpClient", ["apiUrl"] as const, (url: string) => createHttpClient(url));
 ```
 
-`providesValue` and `providesClass` cover the vast majority of use cases. Reach for `Injectable()` only when you need a factory function with custom logic.
+For most services, prefer `providesValue` (eager values), `providesClass` (classes with `static dependencies`), or the inline `provides` form above. The `Injectable()` helper is only needed when you need a reusable factory object — for example, to pass to `run()` for eager initialization.
 
 #### Composable Containers
 
@@ -110,7 +114,7 @@ container.get("plugins"); // [AuthPlugin, LoggingPlugin, { name: "inline", ... }
 - **Service**: Any value or instance provided by the Container.
 - **Token**: A unique identifier for each service, used for registration and retrieval within the Container.
 - **InjectableClass**: Classes that can be instantiated by the Container. Dependencies are specified in a static `dependencies` field to enable automatic injection via `providesClass`.
-- **InjectableFunction**: The lower-level primitive used by `Injectable()` to create factory functions with explicit dependency lists. Use this when `providesValue`/`providesClass` don't fit your needs.
+- **InjectableFunction**: A reusable factory object created by `Injectable()`. Rarely needed directly — prefer the inline `provides('token', factory)` form. Use `Injectable()` when you need to store or pass a factory to `run()`.
 
 ### API Reference
 

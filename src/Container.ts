@@ -75,16 +75,10 @@ export class Container<Services = {}> {
   static provides<Services>(container: PartialContainer<Services, {}> | Container<Services>): Container<Services>;
 
   /**
-   * Creates a new [Container] by providing a Service that has no dependencies.
+   * Creates a new [Container] by providing a Service that has no dependencies,
+   * using a pre-built {@link InjectableFunction}.
    *
-   * @example
-   * ```ts
-   * // Register a single service using an InjectableFunction
-   * const container = Container.provides(Injectable('Logger', () => new Logger()));
-   * ```
-   *
-   * **Tip:** For services without dependencies, prefer
-   * {@link Container.providesValue | providesValue} or {@link Container.providesClass | providesClass}.
+   * **Tip:** Prefer the inline form `Container.provides('token', () => value)` instead.
    */
   static provides<Token extends TokenType, Service>(
     fn: InjectableFunction<{}, [], Token, Service>
@@ -127,8 +121,8 @@ export class Container<Services = {}> {
    * const logger = new Logger();
    * const container = Container.providesValue('Logger', logger);
    *
-   * // This is effectively a shortcut for the following, where an Injectable is explicitly created
-   * const container2 = Container.provides(Injectable('Logger', () => logger);
+   * // This is effectively a shortcut for
+   * const container2 = Container.provides('Logger', () => logger);
    * ```
    *
    * @param token A unique Token identifying the service within the container. This token is used to retrieve the value.
@@ -284,8 +278,8 @@ export class Container<Services = {}> {
    * ```ts
    * // Create initializers for caching and reporting setup that depend on a request service
    * const initializers = new PartialContainer({})
-   *   .provides(Injectable("initCache", ["request"], (request: Request) => fetchAndPopulateCache(request)))
-   *   .provides(Injectable("setupReporter", ["request"], (request: Request) => setupReporter(request)));
+   *   .provides("initCache", ["request"] as const, (request: Request) => fetchAndPopulateCache(request))
+   *   .provides("setupReporter", ["request"] as const, (request: Request) => setupReporter(request));
    *
    * // Setup the main container with a request service and run the initializers
    * const container = Container
@@ -390,20 +384,13 @@ export class Container<Services = {}> {
   ): Container<AddServices<Services, AdditionalServices>>;
 
   /**
-   * Registers a new service in this Container using an `InjectableFunction`. This function defines how the service
-   * is created, including its dependencies and the token under which it will be registered. When called, this method
-   * adds the service to the container, ready to be retrieved via its token.
+   * Registers a new service in this Container using a pre-built `InjectableFunction`.
    *
-   * The `InjectableFunction` must specify:
-   * - A unique `Token` identifying the service.
-   * - A list of `Tokens` representing the dependencies needed to create the service.
+   * **Tip:** Prefer the inline forms `provides('token', () => value)` or
+   * `provides('token', ['dep'] as const, (dep) => value)` instead.
+   * Use this overload when you have a reusable `InjectableFunction` object.
    *
-   * This method ensures type safety by verifying that all required dependencies are available in the container
-   * and match the expected types. If a dependency is missing or a type mismatch occurs, a compiler error is raised,
-   * preventing runtime errors and ensuring reliable service creation.
-   *
-   * @param fn The `InjectableFunction` that constructs the service. It should take required dependencies as arguments
-   * and return the newly created service.
+   * @param fn The `InjectableFunction` that constructs the service.
    * @returns A new `Container` instance containing the added service, allowing chaining of multiple `provides` calls.
    */
   provides<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service>(
@@ -556,23 +543,6 @@ export class Container<Services = {}> {
     ) as Container<Services>;
 
   /**
-   * Appends a new service instance to an existing array within the container using an `InjectableFunction`.
-   *
-   * @example
-   * ```ts
-   * // Assume there's a container with an array ready to hold service instances
-   * const container = Container.fromObject({ services: [] as Service[] });
-   * // Append a new Service instance to the 'services' array using a factory function
-   * const newContainer = container.append(Injectable('services', () => new Service()));
-   * // Retrieve the services array to see the added Service instance
-   * console.log(newContainer.get('services').length); // prints 1;
-   * ```
-   *
-   * @param fn - An injectable function that returns the Service.
-   * @returns The updated Container, now including the new service instance appended to the array
-   * specified by the token.
-   */
-  /**
    * Appends a new service instance to an existing array within the container using a zero-argument factory function.
    *
    * @example
@@ -618,18 +588,12 @@ export class Container<Services = {}> {
   ): Container<Services>;
 
   /**
-   * Appends a new service instance to an existing array within the container using an `InjectableFunction`.
+   * Appends a new service instance to an existing array using a pre-built `InjectableFunction`.
    *
-   * @example
-   * ```ts
-   * const container = Container.fromObject({ services: [] as Service[] });
-   * const newContainer = container.append(Injectable('services', () => new Service()));
-   * console.log(newContainer.get('services').length); // prints 1;
-   * ```
+   * **Tip:** Prefer `append('token', () => value)` or `append('token', ['dep'] as const, fn)` instead.
    *
    * @param fn - An injectable function that returns the Service.
-   * @returns The updated Container, now including the new service instance appended to the array
-   * specified by the token.
+   * @returns The updated Container with the new service instance appended.
    */
   append<
     Token extends keyof Services,

@@ -65,17 +65,19 @@ type PartialContainerFactories<Services> = {
  *
  * Here's an example of PartialContainer usage:
  * ```ts
- * // We can register Foo, even though the PartialContainer doesn't fulfill the Bar dependency.
+ * // Register services with unresolved dependencies
  * const partialContainer = new PartialContainer({})
  *   .providesClass('Foo', Foo) // Foo declares static dependencies = ['Bar'] as const
+ *   .provides('Baz', ['Bar'] as const, (bar: Bar) => new Baz(bar))
  *
  * // Provide the missing dependency via a Container
- * const combinedContainer = Container
+ * const container = Container
  *   .providesValue('Bar', new Bar())
  *   .provides(partialContainer)
  *
- * // We can resolve Foo, because the combined container includes Bar, so all of Foo's dependencies are now met.
- * const foo = combinedContainer.get('Foo')
+ * // All dependencies are now met
+ * const foo = container.get('Foo')
+ * const baz = container.get('Baz')
  * ```
  */
 export class PartialContainer<Services = {}, Dependencies = {}> {
@@ -104,16 +106,12 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
   constructor(private readonly injectables: Injectables<Services, Dependencies>) {}
 
   /**
-   * Create a new PartialContainer which provides a Service created by the given InjectableFunction.
+   * Create a new PartialContainer which provides a Service created by a pre-built InjectableFunction.
    *
-   * The InjectableFunction contains metadata specifying the Token by which the created Service will be known, as well
-   * as an ordered list of Tokens to be resolved and provided to the InjectableFunction as arguments.
+   * **Tip:** Prefer the inline forms `provides('token', () => value)` or
+   * `provides('token', ['dep'] as const, (dep) => value)` instead.
    *
-   * The dependencies are allowed to be missing from the PartialContainer, but these dependencies are maintained as a
-   * parameter of the returned PartialContainer. This allows `[Container.provides]` to type check the dependencies and
-   * ensure they can be provided by the Container.
-   *
-   * @param fn A InjectableFunction, taking dependencies as arguments, which returns the Service.
+   * @param fn An InjectableFunction, taking dependencies as arguments, which returns the Service.
    */
   provides<
     AdditionalDependencies extends readonly any[],
@@ -136,6 +134,12 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
   /**
    * Create a new PartialContainer which provides a Service created by a zero-argument factory function.
    *
+   * @example
+   * ```ts
+   * const partial = new PartialContainer({}).provides('Logger', () => new Logger());
+   * const container = Container.provides(partial);
+   * ```
+   *
    * @param token A unique Token identifying the service.
    * @param fn A zero-argument factory function that creates the service.
    */
@@ -148,6 +152,15 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * Create a new PartialContainer which provides a Service created by a factory function with dependencies.
    * Dependencies that are not already provided by this PartialContainer will be tracked and must be
    * fulfilled by the Container this PartialContainer is eventually provided to.
+   *
+   * @example
+   * ```ts
+   * const partial = new PartialContainer({})
+   *   .provides('ApiClient', ['config'] as const, (config: Config) => new ApiClient(config));
+   *
+   * // 'config' must be provided by the Container
+   * const container = Container.providesValue('config', myConfig).provides(partial);
+   * ```
    *
    * @param token A unique Token identifying the service.
    * @param dependencies A readonly array of tokens for the factory's dependencies.
@@ -172,6 +185,16 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * Dependencies from both containers are combined, with any dependencies satisfied by
    * the other container's services removed.
    *
+   * @example
+   * ```ts
+   * const authModule = new PartialContainer({})
+   *   .providesClass('AuthService', AuthService);
+   *
+   * const apiModule = new PartialContainer({})
+   *   .providesClass('ApiClient', ApiClient)
+   *   .provides(authModule);
+   * ```
+   *
    * @param container The PartialContainer whose services will be merged.
    */
   provides<AdditionalServices, AdditionalDependencies>(
@@ -185,6 +208,14 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * Merges services from a Container into this PartialContainer.
    * Since Container services are fully resolved, they add no new dependencies
    * and may satisfy existing ones.
+   *
+   * @example
+   * ```ts
+   * const configContainer = Container.fromObject({ apiUrl: '...', timeout: 5000 });
+   * const partial = new PartialContainer({})
+   *   .providesClass('ApiClient', ApiClient)
+   *   .provides(configContainer); // satisfies ApiClient's config dependencies
+   * ```
    *
    * @param container The Container whose services will be merged.
    */
