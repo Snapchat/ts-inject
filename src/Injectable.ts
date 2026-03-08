@@ -1,8 +1,9 @@
 import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
 
 /** Sentinel type used to produce readable compiler errors when factory param count doesn't match deps. */
-export type ParamCountMismatch =
-  "Error: factory parameter count must match dependency count" & { readonly __brand: unique symbol };
+export type ParamCountMismatch = "Error: factory parameter count must match dependency count" & {
+  readonly __brand: unique symbol;
+};
 
 /**
  * Creates a reusable Injectable factory function designed for services without dependencies.

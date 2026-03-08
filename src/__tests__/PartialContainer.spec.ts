@@ -196,15 +196,16 @@ describe("PartialContainer", () => {
   });
 
   test("type error targets factory when arity doesn't match deps", () => {
-    expect(() =>
-      new PartialContainer({})
-        .provides(
-          "Foo",
-          ["bar"] as const,
-          // @ts-expect-error factory has 2 params but only 1 dependency
-          (bar: string, extra: number) => bar
-        )
-        .provides("Baz", () => "baz") // should compile — no `never` propagation
+    expect(
+      () =>
+        new PartialContainer({})
+          .provides(
+            "Foo",
+            ["bar"] as const,
+            // @ts-expect-error factory has 2 params but only 1 dependency
+            (bar: string, extra: number) => bar
+          )
+          .provides("Baz", () => "baz") // should compile — no `never` propagation
     ).toThrowError(TypeError);
   });
 

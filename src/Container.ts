@@ -539,10 +539,7 @@ export class Container<Services = {}> {
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
     Service extends ArrayElement<Services[Token]>,
-  >(
-    token: Token,
-    cls: InjectableClass<Services, Service, Tokens>
-  ): Container<Services> {
+  >(token: Token, cls: InjectableClass<Services, Service, Tokens>): Container<Services> {
     return this.providesService(
       ConcatInjectable(token, () => this.providesClass(token, cls).get(token))
     ) as Container<Services>;

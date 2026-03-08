@@ -300,10 +300,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     Tokens extends Class["dependencies"],
     Service extends ConstructorReturnType<Class>,
     Token extends TokenType,
-  >(
-    token: Token,
-    cls: Class
-  ) {
+  >(token: Token, cls: Class) {
     return this.provides<AdditionalDependencies, Tokens, Token, Service>(ClassInjectable(token, cls));
   }
 

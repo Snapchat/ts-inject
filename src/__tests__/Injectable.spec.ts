@@ -3,9 +3,7 @@ import { Injectable } from "../Injectable";
 describe("Injectable", () => {
   describe("when given invalid arguments", () => {
     test("a TypeError is thrown", () => {
-      expect(() => Injectable("TestService", [] as any)).toThrowError(
-        /Received invalid arguments/
-      );
+      expect(() => Injectable("TestService", [] as any)).toThrowError(/Received invalid arguments/);
     });
   });
 
