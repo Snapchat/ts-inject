@@ -1,7 +1,7 @@
 import { entries } from "./entries";
 import type { Memoized } from "./memoize";
 import { memoize } from "./memoize";
-import type { Container } from "./Container";
+import { Container } from "./Container";
 import type {
   AddService,
   AddServices,
@@ -11,7 +11,7 @@ import type {
   TokenType,
   ValidTokens,
 } from "./types";
-import type { ConstructorReturnType } from "./Injectable";
+import type { ConstructorReturnType, ParamCountMismatch } from "./Injectable";
 import { ClassInjectable, Injectable } from "./Injectable";
 
 // Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
@@ -169,16 +169,14 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
   provides<Token extends TokenType, const Tokens extends readonly TokenType[], Params extends readonly any[], Service>(
     token: Token,
     dependencies: Tokens,
-    fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
-  ): Tokens["length"] extends Params["length"]
-    ? PartialContainer<
-        AddService<Services, Token, Service>,
-        ExcludeKey<
-          AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, Params>>,
-          keyof Services
-        >
-      >
-    : never;
+    fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, Params>>,
+      keyof Services
+    >
+  >;
 
   /**
    * Merges services from another PartialContainer into this one.
@@ -223,34 +221,41 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     container: Container<AdditionalServices>
   ): PartialContainer<AddServices<Services, AdditionalServices>, ExcludeKey<Dependencies, keyof AdditionalServices>>;
 
-  provides(first: any, second?: any, third?: any): PartialContainer<any, any> {
+  provides(
+    first: PartialInjectableFunction<any, any, any, any> | PartialContainer<any, any> | Container<any> | TokenType,
+    second?: (() => any) | readonly TokenType[],
+    third?: (...args: any[]) => any
+  ): PartialContainer<any, any> {
     // Two-arg form: provides(token, factory)
     if (typeof second === "function") {
-      return new PartialContainer({ ...this.injectables, [first]: Injectable(first, second) } as any);
+      return this.addInjectable(first as TokenType, Injectable(first as TokenType, second));
     }
     // Three-arg form: provides(token, dependencies, factory)
     if (Array.isArray(second) && typeof third === "function") {
-      const fn = Injectable(first, second, third);
-      return new PartialContainer({ ...this.injectables, [first]: fn } as any);
+      return this.addInjectable(first as TokenType, Injectable(first as TokenType, second, third));
     }
     // provides(PartialContainer)
     if (first instanceof PartialContainer) {
       return new PartialContainer({ ...this.injectables, ...first.injectables } as any);
     }
-    // provides(Container) — duck-type via 'factories' property
-    if (first && "factories" in first) {
-      const containerInjectables: any = {};
+    // provides(Container)
+    if (first instanceof Container) {
+      const containerInjectables: Record<string, InjectableFunction<any, readonly TokenType[], TokenType, any>> = {};
       for (const key of Object.keys(first.factories)) {
         const factory = first.factories[key];
-        const fn: any = () => factory();
-        fn.token = key;
-        fn.dependencies = [];
-        containerInjectables[key] = fn;
+        containerInjectables[key] = Injectable(key, () => factory());
       }
       return new PartialContainer({ ...this.injectables, ...containerInjectables } as any);
     }
     // Original single-arg form: provides(InjectableFunction)
-    return new PartialContainer({ ...this.injectables, [first.token]: first } as any);
+    return this.addInjectable((first as any).token, first as any);
+  }
+
+  private addInjectable(
+    token: TokenType,
+    fn: InjectableFunction<any, readonly TokenType[], TokenType, any>
+  ): PartialContainer<any, any> {
+    return new PartialContainer({ ...this.injectables, [token]: fn } as any);
   }
 
   /**
@@ -266,8 +271,9 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param token the Token by which the value will be known.
    * @param value the value to be provided.
    */
-  providesValue = <Token extends TokenType, Service>(token: Token, value: Service) =>
-    this.provides(Injectable(token, [], () => value));
+  providesValue<Token extends TokenType, Service>(token: Token, value: Service) {
+    return this.provides(Injectable(token, [], () => value));
+  }
 
   /**
    * Create a new PartialContainer which provides the given class as a Service, all of the class's dependencies will be
@@ -288,7 +294,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param token the Token by which the class will be known.
    * @param cls the class to be provided, must match the InjectableClass type.
    */
-  providesClass = <
+  providesClass<
     Class extends InjectableClass<any, any, any>,
     AdditionalDependencies extends ConstructorParameters<Class>,
     Tokens extends Class["dependencies"],
@@ -297,7 +303,9 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
   >(
     token: Token,
     cls: Class
-  ) => this.provides<AdditionalDependencies, Tokens, Token, Service>(ClassInjectable(token, cls));
+  ) {
+    return this.provides<AdditionalDependencies, Tokens, Token, Service>(ClassInjectable(token, cls));
+  }
 
   /**
    * In order to create a [Container], the InjectableFunctions maintained by the PartialContainer must be memoized

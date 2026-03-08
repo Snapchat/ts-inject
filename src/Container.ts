@@ -473,11 +473,12 @@ export class Container<Services = {}> {
    *            specifying these dependencies.
    * @returns A new Container instance containing the newly created service, allowing for method chaining.
    */
-  providesClass = <Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
+  providesClass<Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
     token: Token,
     cls: InjectableClass<Services, Service, Tokens>
-  ): Container<AddService<Services, Token, Service>> =>
-    this.providesService(ClassInjectable(token, cls)) as Container<AddService<Services, Token, Service>>;
+  ): Container<AddService<Services, Token, Service>> {
+    return this.providesService(ClassInjectable(token, cls)) as Container<AddService<Services, Token, Service>>;
+  }
 
   /**
    * Registers a static value as a service in the container. This method is ideal for services that do not
@@ -489,10 +490,12 @@ export class Container<Services = {}> {
    * @returns A new Container instance that includes the provided service, allowing for chaining additional
    *          `provides` calls.
    */
-  providesValue = <Token extends TokenType, Service>(
+  providesValue<Token extends TokenType, Service>(
     token: Token,
     value: Service
-  ): Container<AddService<Services, Token, Service>> => this.providesService(Injectable(token, [], () => value));
+  ): Container<AddService<Services, Token, Service>> {
+    return this.providesService(Injectable(token, [], () => value));
+  }
 
   /**
    * Appends a value to the array associated with a specified token in the current Container, then returns
@@ -510,10 +513,12 @@ export class Container<Services = {}> {
    * @param value - A value to append to the array.
    * @returns The updated Container with the appended value in the specified array.
    */
-  appendValue = <Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
+  appendValue<Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
     token: Token,
     value: Service
-  ): Container<Services> => this.providesService(ConcatInjectable(token, () => value)) as Container<Services>;
+  ): Container<Services> {
+    return this.providesService(ConcatInjectable(token, () => value)) as Container<Services>;
+  }
 
   /**
    * Appends an injectable class factory to the array associated with a specified token in the current Container,
@@ -530,17 +535,18 @@ export class Container<Services = {}> {
    * @param cls - A class with a constructor that takes dependencies as arguments, which returns the Service.
    * @returns The updated Container with the new service instance appended to the specified array.
    */
-  appendClass = <
+  appendClass<
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
     Service extends ArrayElement<Services[Token]>,
   >(
     token: Token,
     cls: InjectableClass<Services, Service, Tokens>
-  ): Container<Services> =>
-    this.providesService(
+  ): Container<Services> {
+    return this.providesService(
       ConcatInjectable(token, () => this.providesClass(token, cls).get(token))
     ) as Container<Services>;
+  }
 
   /**
    * Appends a new service instance to an existing array within the container using a zero-argument factory function.

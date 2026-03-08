@@ -195,6 +195,19 @@ describe("PartialContainer", () => {
     });
   });
 
+  test("type error targets factory when arity doesn't match deps", () => {
+    expect(() =>
+      new PartialContainer({})
+        .provides(
+          "Foo",
+          ["bar"] as const,
+          // @ts-expect-error factory has 2 params but only 1 dependency
+          (bar: string, extra: number) => bar
+        )
+        .provides("Baz", () => "baz") // should compile — no `never` propagation
+    ).toThrowError(TypeError);
+  });
+
   describe("when providing a Service using the same Token as an existing Service", () => {
     describe("provided by the PartialContainer", () => {
       describe("and the new Service does not depend on the old Service", () => {

@@ -1,5 +1,9 @@
 import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
 
+/** Sentinel type used to produce readable compiler errors when factory param count doesn't match deps. */
+export type ParamCountMismatch =
+  "Error: factory parameter count must match dependency count" & { readonly __brand: unique symbol };
+
 /**
  * Creates a reusable Injectable factory function designed for services without dependencies.
  *
@@ -69,12 +73,9 @@ export function Injectable<
   token: Token,
   dependencies: Tokens,
   // The function arity (number of arguments) must match the number of dependencies specified – if they don't, we'll
-  // force a compiler error by saying the arguments should be `void[]`. We'll also throw at runtime, so the return
-  // type will be `never`.
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
-): Tokens["length"] extends Params["length"]
-  ? InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service>
-  : never;
+  // force a compiler error via the ParamCountMismatch sentinel type. We'll also throw at runtime.
+  fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
+): InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service>;
 
 export function Injectable(
   token: TokenType,
@@ -121,7 +122,7 @@ export function InjectableCompat<
 >(
   token: Token,
   dependencies: Tokens,
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+  fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
 ): ReturnType<typeof Injectable> {
   return Injectable(token, dependencies, fn);
 }
@@ -236,7 +237,7 @@ export function ConcatInjectable<
 >(
   token: Token,
   dependencies: Tokens,
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+  fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
 ): InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service[]>;
 
 export function ConcatInjectable(

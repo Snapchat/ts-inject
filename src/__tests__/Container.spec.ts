@@ -377,6 +377,17 @@ describe("Container", () => {
     });
   });
 
+  test("type error targets factory when arity doesn't match deps", () => {
+    expect(() =>
+      Container.providesValue("bar", "hello").provides(
+        "Foo",
+        ["bar"] as const,
+        // @ts-expect-error factory has 2 params but only 1 dependency
+        (bar: string, extra: number) => bar
+      )
+    ).toThrowError(TypeError);
+  });
+
   describe("when retrieving a Service", () => {
     test("an Error is thrown if the Container does not contain the Service", () => {
       // We have to force an error here – without the `as any`, this fails to compile (which typically protects
