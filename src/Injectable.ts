@@ -1,9 +1,10 @@
 import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
 
 /** Sentinel type used to produce readable compiler errors when factory param count doesn't match deps. */
-export type ParamCountMismatch = "Error: factory parameter count must match dependency count" & {
-  readonly __brand: unique symbol;
-};
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface ParamCountMismatch {
+  readonly "Error: factory parameter count must match dependency count": never;
+}
 
 /**
  * Creates a reusable Injectable factory function designed for services without dependencies.
