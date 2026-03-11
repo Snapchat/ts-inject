@@ -1,18 +1,26 @@
 import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
 
+/** Sentinel type used to produce readable compiler errors when factory param count doesn't match deps. */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface ParamCountMismatch {
+  readonly "Error: factory parameter count must match dependency count": never;
+}
+
 /**
- * Creates an Injectable factory function designed for services without dependencies.
- * This is useful for simple services or values that don't depend on other parts of the system.
+ * Creates a reusable Injectable factory function designed for services without dependencies.
  *
- * **Tip:** For simple cases, prefer {@link Container.providesValue | Container.providesValue()}
- * or {@link Container.providesClass | Container.providesClass()} instead. Use `Injectable()` when
- * you need custom factory logic.
+ * **Note:** In most cases, prefer using `provides('token', () => value)` directly on
+ * Container or PartialContainer instead. `Injectable()` is primarily needed when you want
+ * a reusable factory object — for example, to pass to {@link Container.run | Container.run()}.
  *
  * @example
  * ```ts
- * const container = Container.provides(Injectable("MyService", () => new MyService()));
+ * // Prefer the inline form:
+ * const container = Container.provides("MyService", () => new MyService());
  *
- * const myService = container.get("MyService");
+ * // Use Injectable() when you need a reusable factory:
+ * const myServiceFactory = Injectable("MyService", () => new MyService());
+ * container.run(myServiceFactory); // eager initialization
  * ```
  *
  * @param token A unique Token identifying the Service within the container. This token
@@ -35,20 +43,21 @@ export function Injectable<Token extends TokenType, Service>(
  * **Important:** This function requires **TypeScript 5 or later** due to the use of `const` type parameters.
  * Users on TypeScript 4 and earlier must use {@link InjectableCompat} instead.
  *
+ * **Note:** In most cases, prefer the inline form on Container or PartialContainer:
+ * `provides('token', ['dep'] as const, (dep) => value)`.
+ *
  * @example
  * ```ts
- * const dependencyB = 'DependencyB';
+ * // Prefer the inline form:
  * const container = Container
  *   .providesValue("DependencyA", new A())
  *   .providesValue("DependencyB", new B())
- *   .provides(Injectable(
- *     "MyService",
- *     ["DependencyA", dependencyB] as const, // "as const" can be omitted in TypeScript 5 and later
- *     (a: A, b: B) => new MyService(a, b),
- *   )
- * )
+ *   .provides("MyService", ["DependencyA", "DependencyB"] as const, (a: A, b: B) => new MyService(a, b));
  *
- * const myService = container.get("MyService");
+ * // Use Injectable() when you need a reusable factory object:
+ * const myServiceFactory = Injectable(
+ *   "MyService", ["DependencyA", "DependencyB"] as const, (a: A, b: B) => new MyService(a, b)
+ * );
  * ```
  *
  * @param token A unique Token identifying the Service within the container.
@@ -66,12 +75,9 @@ export function Injectable<
   token: Token,
   dependencies: Tokens,
   // The function arity (number of arguments) must match the number of dependencies specified – if they don't, we'll
-  // force a compiler error by saying the arguments should be `void[]`. We'll also throw at runtime, so the return
-  // type will be `never`.
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
-): Tokens["length"] extends Params["length"]
-  ? InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service>
-  : never;
+  // force a compiler error via the ParamCountMismatch sentinel type. We'll also throw at runtime.
+  fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
+): InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service>;
 
 export function Injectable(
   token: TokenType,
@@ -118,7 +124,7 @@ export function InjectableCompat<
 >(
   token: Token,
   dependencies: Tokens,
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+  fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
 ): ReturnType<typeof Injectable> {
   return Injectable(token, dependencies, fn);
 }
@@ -179,18 +185,23 @@ export function ClassInjectable(
  * to an existing array of Services of the same type. Useful for dynamically expanding
  * service collections without altering original service tokens or factories.
  *
+ * **Note:** Prefer using `container.append('token', () => value)` or
+ * `container.appendValue('token', value)` instead.
+ *
  * @example
  * ```ts
+ * // Prefer the inline form:
  * const container = Container
- *   .providesValue("values", [1]) // Initially provide an array with one value
- *   .provides(ConcatInjectable("values", () => 2)); // Append another value to the array
+ *   .providesValue("values", [1])
+ *   .append("values", () => 2);
  *
- * const result = container.get("values"); // Results in [1, 2]
+ * // ConcatInjectable is the lower-level primitive:
+ * const container2 = Container
+ *   .providesValue("values", [1])
+ *   .provides(ConcatInjectable("values", () => 2));
+ *
+ * // Both result in container.get("values") === [1, 2]
  * ```
- *
- * In this context, `ConcatInjectable("values", () => 2)` acts as a simplified form of
- * `Injectable("values", ["values"], (values: number[]) => [...values, 2])`,
- * directly appending a new value to the "values" service array without the need for explicit array manipulation.
  *
  * @param token Token identifying an existing Service array to which the new Service will be appended.
  * @param fn A no-argument function that returns the service to be appended.
@@ -228,7 +239,7 @@ export function ConcatInjectable<
 >(
   token: Token,
   dependencies: Tokens,
-  fn: (...args: Tokens["length"] extends Params["length"] ? Params : void[]) => Service
+  fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
 ): InjectableFunction<ServicesFromTokenizedParams<Tokens, Params>, Tokens, Token, Service[]>;
 
 export function ConcatInjectable(
