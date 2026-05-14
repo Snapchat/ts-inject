@@ -29,6 +29,7 @@
     "test": "jest",
     "test:watch": "jest --clearCache && jest --watch",
     "bench": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' ts-node --transpile-only benchmarks/provides-chain.ts",
+    "bench:get": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' ts-node --transpile-only benchmarks/get-pass.ts",
     "compile": "tsc -b ./tsconfig.cjs.json ./tsconfig.esm.json ./tsconfig.types.json",
     "docs": "typedoc src/index.ts",
     "build": "rm -rf dist && rm -rf docs && npm run compile && npm run docs"

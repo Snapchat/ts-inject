@@ -182,6 +182,15 @@ export class Container<Services = {}> {
   // assign a container of type Container<{ a: number, b: string }> to a variable of type Container<{ a: number }>.
   readonly factories: Readonly<Factories<Services>>;
 
+  // Lazy flat view of `factories` used by `get` for O(1) lookup. `factories` itself is a
+  // prototype-chained map (so `provides()` stays O(1) per step), but reading from it costs
+  // O(depth-of-token) per lookup. We materialize a single own-property snapshot on the first
+  // `get` and read from it thereafter. Container instances are immutable after construction,
+  // so the snapshot stays valid for the lifetime of this container. Engines without inline
+  // caches for prototype-chain access (notably Hermes) make this materially important; even
+  // on V8 a full key sweep on a deep chain drops from O(N²) to O(N).
+  private flatFactories?: Factories<Services>;
+
   constructor(factories: MaybeMemoizedFactories<Services>) {
     // Public path: callers may hand us raw, non-memoized factories. Memoize any own keys
     // that aren't already memoized. Internal builders use {@link withMemoizedFactories}
@@ -271,7 +280,11 @@ export class Container<Services = {}> {
 
   get(token: ContainerToken | keyof Services): this | Services[keyof Services] {
     if (token === CONTAINER) return this;
-    const factory = this.factories[token];
+    // Materialize a flat own-property snapshot of `factories` on first read so subsequent
+    // lookups don't pay the prototype-chain walk cost. Once built, the snapshot is reused
+    // for every `get` on this container.
+    const flat = this.flatFactories ?? (this.flatFactories = this.buildFlatFactories());
+    const factory = flat[token as keyof Services];
     if (!factory) {
       throw new Error(
         `[Container::get] Could not find Service for Token "${String(token)}". This should've caused a ` +
@@ -283,6 +296,14 @@ export class Container<Services = {}> {
     // Pass `this` so factories that depend on other services resolve them through the calling
     // container — supporting overrides applied after the factory was registered.
     return factory.call(this);
+  }
+
+  private buildFlatFactories(): Factories<Services> {
+    const flat = Object.create(null) as Factories<Services>;
+    chainedForEach<Memoized<() => unknown>>(this.factories, (k, v) => {
+      (flat as Record<string, Memoized<() => unknown>>)[k] = v;
+    });
+    return flat;
   }
 
   /**

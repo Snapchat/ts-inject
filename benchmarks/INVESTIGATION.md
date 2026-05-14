@@ -7,16 +7,18 @@ Long `Container.provides()` and `PartialContainer.provides()` chains used to con
 1. Replacing the shallow spread of `this.factories` / `this.injectables` with prototype-chained extension (`Object.create`).
 2. Removing the per-step `for...in` loop in the `Container` constructor that rebinds `thisArg` on every already-memoized factory.
 3. Replacing `for...in` and `obj[k]` traversal over chained maps with a single-pass `chainedForEach` helper — `for...in` is itself O(N²) on deep `Object.create` chains in V8, as is repeated `[k]` lookup.
+4. Materializing a flat own-property snapshot of `factories` on the first `Container.get()` so subsequent reads are O(1) regardless of where the token sits in the prototype chain. Without this, the read path was O(depth-of-token), and a full key sweep over a deep chain was O(N²). The hit is invisible on V8 (inline caches mask it) but real on Hermes — measured ~20× regression vs. the pre-PR flat-map baseline on Snap's mobile DI assembly workload.
 
-End-to-end speedup at chain depth 8000: **Container** 10,286 ms → ~500 ms (~20×), **PartialContainer** 5,199 ms → ~513 ms (~10×). All 87 tests pass with 100% line/branch/function coverage.
+End-to-end speedup at chain depth 8000: **Container** 10,286 ms → ~500 ms (~20×), **PartialContainer** 5,199 ms → ~513 ms (~10×). Hot read-path full-sweep on a 1600-deep chain: 13.3 ms/iter → 0.10 ms/iter (~129× on V8; more on engines without prototype-chain ICs). All 93 tests pass with 100% line/branch/function coverage.
 
 ## How to reproduce
 
 ```bash
-npm run bench
+npm run bench       # chain construction + materialization + 800-deep get-pass probe
+npm run bench:get   # dedicated read-path bench: full key sweep at 50 … 1600
 ```
 
-The benchmark builds Container and PartialContainer chains of 50 → 8000 services, reports `ms/build`, then probes lookup cost on an 800-deep Container and materialization cost (`Container.provides(partial)`) across the same range.
+The first benchmark builds Container and PartialContainer chains of 50 → 8000 services and reports `ms/build`, then probes lookup cost on an 800-deep Container and materialization cost (`Container.provides(partial)`) across the same range. The second isolates the read path: a single container is built and the full key sweep is timed in a hot loop, which is what surfaced the Hermes regression.
 
 ## Numbers
 
@@ -43,9 +45,20 @@ The benchmark builds Container and PartialContainer chains of 50 → 8000 servic
 | 3200       | 715.93      | 76.67      | 9.3×    |
 | 8000       | 5199.09     | 512.58     | 10.1×   |
 
-**Materialization (`Container.provides(partial)`)** remains a fast linear pass: 2.4 ms at N=8000.
+**Materialization (`Container.provides(partial)`)** remains a fast linear pass: ~3 ms at N=8000.
 
-Lookup cost on an 800-deep Container went from ~0.09 ms/full-pass to ~0.95 ms/full-pass (≈1.2 µs per `get()` on first access). This is a deliberate trade — see _Trade-offs_ below.
+**Hot read path** (`npm run bench:get`, same container, full key sweep, V8):
+
+| N    | without flatten cache | with flatten cache |
+| ---- | --------------------: | -----------------: |
+| 50   |              0.004 ms |           0.003 ms |
+| 100  |              0.013 ms |           0.005 ms |
+| 200  |              0.044 ms |           0.010 ms |
+| 400  |              0.180 ms |           0.024 ms |
+| 800  |              1.883 ms |           0.069 ms |
+| 1600 |             13.313 ms |           0.103 ms |
+
+Without the flatten cache the curve is O(N²); with it the curve is linear (≈ 60 ns per `get` once warmed). On Hermes the original O(N²) was much worse because there's no prototype-chain inline cache to mask it — Snap's mobile team measured ~20× regression on the read path at chain depth 800 before the cache was added.
 
 Measured on Apple silicon, Node 20. Numbers will differ on other devices, but the relative shapes are what matter.
 
@@ -95,9 +108,9 @@ We went with **(1) + (2) together**. They compose: (1) lets us skip the construc
 
 - **`src/memoize.ts`** — dropped the `thisArg` field from `Memoized`. Memoized functions now use the call-site `this` (`memo = delegate.apply(this, args)`).
 - **`src/Container.ts`**:
-  - Constructor: memoizes any non-memoized own factories of the input while preserving any prototype chain.
+  - Constructor: memoizes any non-memoized own factories of the input, rooting the resulting map at a null-prototype object so token names that collide with `Object.prototype` methods (e.g. `"toString"`) don't leak through `get()`.
   - Private `withMemoizedFactories` factory used by internal chain builders that already guarantee memoized input; skips the constructor scan entirely.
-  - `get()`: invokes the factory via `factory.call(this)` so dependencies resolve against the calling container.
+  - `get()`: builds a lazy flat own-property snapshot of `factories` on first call and reads from it thereafter, so lookups stay O(1) regardless of prototype-chain depth. Invokes the factory via `factory.call(this)` so dependencies resolve against the calling container.
   - `provides()` (per-token and Container/PartialContainer merge): builds the new factories object via `Object.create(this.factories)` instead of a spread.
   - `copy()`: same prototype-chain approach; only scoped tokens get freshly-memoized own properties.
 - **`src/PartialContainer.ts`**:
@@ -108,11 +121,11 @@ We went with **(1) + (2) together**. They compose: (1) lets us skip the construc
 
 ## Trade-offs
 
-### Lookup cost grew slightly
+### First-`get` cost on each container
 
-`get(token)` now walks a prototype chain to find the factory. For an 800-deep chain that's ~1.2 µs per lookup on first access. After the factory is memoized once, the chain walk still happens to find the factory function, but the cached result short-circuits the body.
+`Container.get()` materializes a flat own-property snapshot of `factories` on first call. That snapshot pays one O(N) walk of the prototype chain. The total work for `G` gets on a container with `N` services is therefore `N + G` (flatten once + G O(1) reads) instead of `G × depth-of-token` (current pre-cache state) or `G × 1` (pre-chain spread state).
 
-In real applications a cold start typically touches a small handful of services, so the additional walk cost is negligible. If a workload ever does mass-access of services, a "flatten chain when depth exceeds N" optimization can be layered on later.
+For real cold-start workloads (≥1 `get` per container, often N gets when running a partial), the flatten cost is amortized away and the net change vs. the old flat-map baseline is small. For pathological cases where you build a Container, do exactly one shallow `get`, and discard it, the flatten still walks the whole chain — but in that case the chain is also typically short, and even the pre-cache cost was negligible.
 
 ### Subtle semantic shift: parent stays consistent after a fork
 
