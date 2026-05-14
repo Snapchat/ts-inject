@@ -585,6 +585,43 @@ describe("Container", () => {
       expect(c.factories.svc()).toBe(84);
     });
 
+    test("get() and a direct factories[token]() call share memoization", () => {
+      // The underlying memoized factory runs at most once regardless of which entry
+      // point hits it first; both routes return the same instance.
+      let runs = 0;
+      const c = Container.providesValue("dep", 10).provides("svc", ["dep"] as const, (d: number) => {
+        runs += 1;
+        return { value: d };
+      });
+      const viaGet = c.get("svc");
+      const viaDirect = c.factories.svc();
+      expect(viaGet).toBe(viaDirect);
+      expect(runs).toBe(1);
+    });
+
+    test("direct invocation works for a service inherited via a deep chain", () => {
+      // `svc` is registered near the base; descendants reach it through the prototype
+      // chain. Direct invocation on a descendant must still route resolution through
+      // that descendant's flat view, not throw on the chain walk.
+      let c: Container<any> = Container.providesValue("dep", 5).provides(
+        "svc",
+        ["dep"] as const,
+        (d: number) => d * 10
+      );
+      for (let i = 0; i < 50; i++) c = c.providesValue(`pad${i}`, i);
+      expect(c.factories.svc()).toBe(50);
+    });
+
+    test("direct invocation picks up dependency overrides applied later in the chain", () => {
+      // The dependent service is registered when `value` is 1; a later override sets it
+      // to 2. Mirrors the equivalent get() test but goes through the factories map —
+      // both routes must honor the override (matching the pre-PR thisArg behavior).
+      const c = Container.providesValue("value", 1)
+        .provides("svc", ["value"] as const, (v: number) => v)
+        .providesValue("value", 2);
+      expect(c.factories.svc()).toBe(2);
+    });
+
     test("Object.keys returns every registered token regardless of chain depth", () => {
       // Public `factories` exposes a flat own-property view; internal chain extension via
       // Object.create stays an implementation detail.
