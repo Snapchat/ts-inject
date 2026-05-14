@@ -241,9 +241,14 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     // provides(Container)
     if (first instanceof Container) {
       const containerInjectables: Record<string, InjectableFunction<any, readonly TokenType[], TokenType, any>> = {};
-      for (const key of Object.keys(first.factories)) {
-        const factory = first.factories[key];
-        containerInjectables[key] = Injectable(key, () => factory());
+      // The source container's factories may be prototype-chained — walk the full chain
+      // with `for...in` so inherited factories are included.
+      const sourceFactories = first.factories;
+      for (const key in sourceFactories) {
+        const factory = (sourceFactories as any)[key];
+        // Bind to the source container so dependencies still resolve from it when this
+        // injectable runs in a different container's context.
+        containerInjectables[key] = Injectable(key, () => factory.call(first));
       }
       return new PartialContainer({ ...this.injectables, ...containerInjectables } as any);
     }
@@ -325,7 +330,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     return (factories = Object.fromEntries(
       entries(this.injectables).map(([token, fn]) => [
         token,
-        memoize(parent, () =>
+        memoize(() =>
           fn(
             ...(fn.dependencies.map((t) => {
               return t === token

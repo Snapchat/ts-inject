@@ -424,6 +424,21 @@ describe("Container", () => {
       expect(childContainerWithOverride.get("service")).toBe(1);
     });
 
+    test("forking a child does not change the parent's view of its services", () => {
+      // The parent must remain a self-consistent snapshot: resolving a service via the parent
+      // continues to use the parent's own dependencies, regardless of overrides applied in a
+      // forked child.
+      const parent = Container.providesValue("value", 1).provides(
+        Injectable("service", ["value"], (value: number) => value)
+      );
+      // Fork a child with an override; do NOT resolve anything on the child before reading from
+      // the parent. (Once a shared factory is resolved by any container, subsequent reads return
+      // the memoized value — sibling isolation requires copy(['token']).)
+      parent.providesValue("value", 2);
+      expect(parent.get("service")).toBe(1);
+      expect(parent.get("value")).toBe(1);
+    });
+
     test("overriding with a different type changes resulting container's type", () => {
       const parentContainer = Container.providesValue("value", 1);
       let childContainerWithOverride = parentContainer.providesValue("value", "two");
@@ -492,6 +507,48 @@ describe("Container", () => {
     test("the factories are returned", () => {
       let c = container.providesValue("service", "value");
       expect(c.factories.service()).toEqual("value");
+    });
+  });
+
+  describe("when constructed with raw, non-memoized factories", () => {
+    test("the constructor memoizes them and resolution works", () => {
+      // Exercises the constructor's slow path — internal builders feed pre-memoized factories,
+      // so this path is only hit when the constructor is called directly with raw functions.
+      const raw = { a: () => 1, b: () => "two" };
+      const c = new Container(raw);
+      expect(c.get("a")).toBe(1);
+      expect(c.get("b")).toBe("two");
+    });
+
+    test("memoization holds across repeated gets", () => {
+      const factory = jest.fn(() => ({}));
+      const c = new Container({ thing: factory });
+      const first = c.get("thing");
+      const second = c.get("thing");
+      expect(first).toBe(second);
+      expect(factory).toHaveBeenCalledTimes(1);
+    });
+
+    test("passes through already-memoized own factories on the slow path", () => {
+      // Slow path is entered because `raw` has at least one non-memoized own factory; the
+      // already-memoized `memoized` own factory must be preserved as-is.
+      const memoized = Container.providesValue("first", 1).factories.first;
+      const mixed = { first: memoized, second: () => 2 };
+      const c: Container<{ first: number; second: number }> = new Container(mixed);
+      expect(c.get("first")).toBe(1);
+      expect(c.get("second")).toBe(2);
+    });
+
+    test("preserves a non-trivial prototype while memoizing own factories", () => {
+      // Build a factories-like object whose prototype chain holds an existing service, then
+      // mix in a non-memoized own factory. The constructor must memoize the own key while
+      // keeping the inherited service reachable.
+      const parent = Container.providesValue("inherited", "p");
+      const child = Object.create(parent.factories) as any;
+      child.fresh = () => "child";
+      const c: Container<{ inherited: string; fresh: string }> = new Container(child);
+      expect(c.get("fresh")).toBe("child");
+      expect(c.get("inherited")).toBe("p");
     });
   });
 

@@ -172,18 +172,30 @@ export class Container<Services = {}> {
   readonly factories: Readonly<Factories<Services>>;
 
   constructor(factories: MaybeMemoizedFactories<Services>) {
-    const memoizedFactories = {} as Factories<Services>;
-    for (const k in factories) {
-      const fn = factories[k];
-      if (isMemoized(fn)) {
-        memoizedFactories[k] = fn;
-        // to allow overriding values in the container we replace the factory's reference to the container with the
-        // newly created one, this makes sure that overrides are taken into account when resolving the service's
-        // dependencies.
-        fn.thisArg = this;
-      } else {
-        memoizedFactories[k] = memoize(this, fn);
+    // Fast path: when every own factory is already memoized, share the input directly.
+    // Internal builders (`provides`, `copy`, etc.) prepare factories this way and chain
+    // them via `Object.create`, keeping per-step construction O(1).
+    const ownKeys = Object.keys(factories);
+    let allMemoized = true;
+    for (const k of ownKeys) {
+      if (!isMemoized((factories as any)[k])) {
+        allMemoized = false;
+        break;
       }
+    }
+    if (allMemoized) {
+      this.factories = factories as unknown as Factories<Services>;
+      return;
+    }
+    // Slow path: memoize any non-memoized own factories, preserving any prototype chain
+    // so inherited memoized factories stay reachable.
+    const proto = Object.getPrototypeOf(factories);
+    const memoizedFactories = (proto && proto !== Object.prototype
+      ? Object.create(proto)
+      : ({} as Factories<Services>)) as Factories<Services>;
+    for (const k of ownKeys) {
+      const fn = (factories as any)[k];
+      (memoizedFactories as any)[k] = isMemoized(fn) ? fn : memoize(fn);
     }
     this.factories = memoizedFactories;
   }
@@ -222,14 +234,17 @@ export class Container<Services = {}> {
    * instances to the new Container.
    */
   copy<Tokens extends readonly (keyof Services)[]>(scopedServices?: Tokens): Container<Services> {
-    const factories: MaybeMemoizedFactories<Services> = { ...this.factories };
-
-    // We "un-memoize" scoped Service InjectableFunctions so they will create a new copy of their Service when
-    // provided by the new Container – we re-memoize them so the new Container will itself only create one Service
-    // instance.
-    (scopedServices || []).forEach((token: keyof Services) => {
-      factories[token] = this.factories[token].delegate;
-    });
+    if (!scopedServices || scopedServices.length === 0) {
+      // Share factories via prototype chain — the new container resolves to the same memoized
+      // instances as the original.
+      return new Container(Object.create(this.factories) as MaybeMemoizedFactories<Services>);
+    }
+    // Override scoped tokens with freshly-memoized copies of the original delegates so the new
+    // container produces independent service instances for those tokens.
+    const factories = Object.create(this.factories) as MaybeMemoizedFactories<Services>;
+    for (const token of scopedServices) {
+      factories[token] = memoize(this.factories[token].delegate);
+    }
     return new Container(factories);
   }
 
@@ -262,7 +277,9 @@ export class Container<Services = {}> {
           "definitely initialized before the call to Injectable."
       );
     }
-    return factory();
+    // Pass `this` so factories that depend on other services resolve them through the calling
+    // container — supporting overrides applied after the factory was registered.
+    return factory.call(this);
   }
 
   /**
@@ -450,14 +467,16 @@ export class Container<Services = {}> {
     }
     // Original single-arg forms
     if (first instanceof PartialContainer || first instanceof Container) {
-      const factories = first instanceof PartialContainer ? first.getFactories(this) : first.factories;
-      // Safety: `this.factories` and `factories` are both properly type checked, so merging them produces
-      // a Factories object with keys from both Services and AdditionalServices. The compiler is unable to
-      // infer that Factories<A> & Factories<B> == Factories<A & B>, so the cast is required.
-      return new Container({
-        ...this.factories,
-        ...factories,
-      } as unknown as MaybeMemoizedFactories<AddServices<Services, any>>);
+      const incoming = first instanceof PartialContainer ? first.getFactories(this) : first.factories;
+      // Layer the incoming factories on top of this.factories via prototype chain — O(1) base
+      // plus O(K) for K incoming keys (instead of spreading every factory in `this`).
+      const factories = Object.create(this.factories) as MaybeMemoizedFactories<AddServices<Services, any>>;
+      // `for...in` walks the prototype chain so chained factories from the incoming container
+      // come through. Newer keys (own properties) override older ones (inherited).
+      for (const k in incoming) {
+        (factories as any)[k] = (incoming as any)[k];
+      }
+      return new Container(factories);
     }
     return this.providesService(first);
   }
@@ -636,14 +655,14 @@ export class Container<Services = {}> {
     // If the service depends on itself, e.g. in the multi-binding case, where we call append multiple times with
     // the same token, we always must resolve the dependency using the parent container to avoid infinite loop.
     const getFromParent = dependencies.indexOf(token) === -1 ? undefined : () => this.get(token as any);
-    const factory = memoize(this, function (this: Container<Services>) {
+    const factory = memoize(function (this: Container<Services>) {
       // Safety: getFromParent is defined if the token is in the dependencies list, so it is safe to call it.
       return fn(...(dependencies.map((t) => (t === token ? getFromParent!() : this.get(t))) as any));
     });
-    // Safety: `token` and `factory` are properly type checked, so extending `this.factories` produces a
-    // MaybeMemoizedFactories object with the expected set of services – but when using the spread operation to
-    // merge two objects, the compiler widens the Token type to string. So we must re-narrow via casting.
-    const factories = { ...this.factories, [token]: factory };
+    // Extend `this.factories` via prototype chain so adding a service is O(1) — a chain of N
+    // `provides` calls is O(N) total instead of O(N²).
+    const factories = Object.create(this.factories) as MaybeMemoizedFactories<AddService<Services, Token, Service>>;
+    (factories as any)[token] = factory;
     return new Container(factories) as Container<AddService<Services, Token, Service>>;
   }
 }
