@@ -14,11 +14,13 @@ End-to-end speedup at chain depth 8000: **Container** 10,286 ms → ~500 ms (~20
 ## How to reproduce
 
 ```bash
-npm run bench       # chain construction + materialization + 800-deep get-pass probe
-npm run bench:get   # dedicated read-path bench: full key sweep at 50 … 1600
+npm run bench
 ```
 
-The first benchmark builds Container and PartialContainer chains of 50 → 8000 services and reports `ms/build`, then probes lookup cost on an 800-deep Container and materialization cost (`Container.provides(partial)`) across the same range. The second isolates the read path: a single container is built and the full key sweep is timed in a hot loop, which is what surfaced the Hermes regression.
+Runs two sections back-to-back:
+
+1. **Construction + materialization** (`benchmarks/provides-chain.ts`) — Container and PartialContainer chains of 50 → 8000 services, `ms/build`, plus an 800-deep lookup probe and `Container.provides(partial)` materialization cost across the same range.
+2. **Read-path** (`benchmarks/get-pass.ts`) — single container, full key sweep in a hot loop at 50 → 1600. This is what surfaced the Hermes regression.
 
 ## Numbers
 
@@ -47,7 +49,7 @@ The first benchmark builds Container and PartialContainer chains of 50 → 8000 
 
 **Materialization (`Container.provides(partial)`)** remains a fast linear pass: ~3 ms at N=8000.
 
-**Hot read path** (`npm run bench:get`, same container, full key sweep, V8):
+**Hot read path** (same container, full key sweep, V8):
 
 | N    | without flatten cache | with flatten cache |
 | ---- | --------------------: | -----------------: |
