@@ -184,13 +184,17 @@ export class Container<Services = {}> {
 
   constructor(factories: MaybeMemoizedFactories<Services>) {
     // Public path: callers may hand us raw, non-memoized factories. Memoize any own keys
-    // that aren't already memoized, preserving any prototype chain so inherited memoized
-    // factories stay reachable. Internal builders use {@link withMemoizedFactories} above
-    // to skip this scan entirely.
+    // that aren't already memoized. Internal builders use {@link withMemoizedFactories}
+    // above to skip this scan entirely.
+    //
+    // Root the new factories at a null-prototype object so token names that match
+    // Object.prototype methods (`toString`, `constructor`, `__proto__`, …) don't leak
+    // through `get()` as if they were registered services. Non-trivial input prototypes
+    // are preserved so already-chained factory maps remain reachable.
     const ownKeys = Object.keys(factories);
     const proto = Object.getPrototypeOf(factories);
     const memoizedFactories = (
-      proto && proto !== Object.prototype ? Object.create(proto) : ({} as Factories<Services>)
+      proto && proto !== Object.prototype ? Object.create(proto) : Object.create(null)
     ) as Factories<Services>;
     for (const k of ownKeys) {
       const fn = (factories as any)[k];

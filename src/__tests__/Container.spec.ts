@@ -1,5 +1,5 @@
 // eslint-disable-next-line max-classes-per-file
-import { Container } from "../Container";
+import { CONTAINER, Container } from "../Container";
 import { Injectable } from "../Injectable";
 import { PartialContainer } from "../PartialContainer";
 import type { InjectableFunction } from "../types";
@@ -405,6 +405,58 @@ describe("Container", () => {
     });
   });
 
+  describe("when a service depends on the $container token", () => {
+    test("the service receives the container that resolved it", () => {
+      const initial = Container.providesValue("value", 10);
+      const extended = initial.provides(
+        Injectable("service", [CONTAINER] as const, (c: typeof initial) => c.get("value") * 2)
+      );
+      expect(extended.get("service")).toBe(20);
+    });
+
+    test("after a fork with an override, $container resolves through the forked child", () => {
+      const parent = Container.providesValue("value", 1).provides(
+        Injectable("service", [CONTAINER] as const, (c: any) => c.get("value") * 10)
+      );
+      // Fork an override without first resolving on the parent.
+      const child = parent.providesValue("value", 5);
+      expect(child.get("service")).toBe(50);
+    });
+  });
+
+  describe("when token names collide with Object.prototype properties", () => {
+    test("registered tokens that shadow Object.prototype methods resolve correctly", () => {
+      const c = Container.providesValue("toString", "custom-toString")
+        .providesValue("hasOwnProperty", 42)
+        .providesValue("constructor", "fake-ctor");
+      expect(c.get("toString")).toBe("custom-toString");
+      expect(c.get("hasOwnProperty")).toBe(42);
+      expect(c.get("constructor")).toBe("fake-ctor");
+    });
+
+    test("unregistered tokens that match Object.prototype methods still throw", () => {
+      // Without the null-prototype root, `c.factories.toString` would return
+      // Object.prototype.toString and silently invoke it instead of throwing.
+      const c = Container.providesValue("foo", 1) as Container<any>;
+      expect(() => c.get("toString")).toThrowError(/Could not find Service for Token "toString"/);
+      expect(() => c.get("constructor")).toThrowError(/Could not find Service for Token "constructor"/);
+    });
+  });
+
+  describe("on a deep dependency chain", () => {
+    test("resolves a 100-deep linear chain to the correct values", () => {
+      const SIZE = 100;
+      let c: Container<any> = Container.providesValue("v0", 0);
+      for (let i = 1; i <= SIZE; i++) {
+        c = c.provides(`v${i}`, [`v${i - 1}`] as const, (prev: number) => prev + 1);
+      }
+      expect(c.get(`v${SIZE}`)).toBe(SIZE);
+      // Re-resolve a shallow service after the deep walk to confirm memoization stays distinct.
+      expect(c.get("v0")).toBe(0);
+      expect(c.get("v50")).toBe(50);
+    });
+  });
+
   describe("overrides", () => {
     test("overriding value is supplied to the parent container function as a dependency", () => {
       let containerWithOverride = Container.providesValue("value", 1)
@@ -487,6 +539,26 @@ describe("Container", () => {
 
       // The InjectableFunction was used to create a separate Service instance for each Container.
       expect(injectable).toBeCalledTimes(2);
+    });
+
+    test("scoped copy on a deeply chained container produces a fresh memoization", () => {
+      // Bury the scoped service deep in a chain to exercise prototype-chain copy semantics.
+      let counter = 0;
+      let c: Container<any> = Container.providesValue("base", 1);
+      for (let i = 0; i < 50; i++) c = c.providesValue(`pad${i}`, i);
+      c = c.provides("counter", () => ++counter);
+      for (let i = 0; i < 50; i++) c = c.providesValue(`tail${i}`, i);
+
+      const originalValue = c.get("counter");
+      const copy = c.copy(["counter"]);
+      const copiedValue = copy.get("counter");
+
+      expect(originalValue).toBe(1);
+      expect(copiedValue).toBe(2);
+      // Original's memoization is untouched.
+      expect(c.get("counter")).toBe(1);
+      // Non-scoped, inherited services still share memoization with the original.
+      expect(copy.get("tail10")).toBe(c.get("tail10"));
     });
   });
 
