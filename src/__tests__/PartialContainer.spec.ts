@@ -342,4 +342,27 @@ describe("PartialContainer", () => {
       });
     });
   });
+
+  describe("when constructed with a non-empty injectables map", () => {
+    test("flattens the input and exposes every injectable via getTokens", () => {
+      const a = Injectable("a", () => 1);
+      const b = Injectable("b", () => "two");
+      const partial = new PartialContainer({ a, b } as any);
+      expect(partial.getTokens().sort()).toEqual(["a", "b"]);
+      const c = Container.provides(partial) as Container<any>;
+      expect(c.get("a")).toBe(1);
+      expect(c.get("b")).toBe("two");
+    });
+  });
+
+  describe("token names that collide with Object.prototype properties", () => {
+    test("registering a service with the token '__proto__' preserves it through materialization", () => {
+      // Without a null-prototype root, assigning to __proto__ triggers the inherited setter
+      // and the token disappears from getTokens()/getFactories().
+      const partial = new PartialContainer({}).providesValue("__proto__", 1);
+      expect(partial.getTokens()).toContain("__proto__");
+      const container = Container.provides(partial) as Container<any>;
+      expect(container.get("__proto__")).toBe(1);
+    });
+  });
 });

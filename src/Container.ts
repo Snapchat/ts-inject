@@ -171,45 +171,45 @@ export class Container<Services = {}> {
    * performs, since chain-building paths (`provides`, `copy`, etc.) prepare factories that
    * are guaranteed memoized. Keeps the per-step cost of building a `provides()` chain O(1).
    */
-  private static withMemoizedFactories<S>(factories: Factories<S>): Container<S> {
+  private static withMemoizedFactories<S>(factoriesChain: Factories<S>): Container<S> {
     const c = Object.create(Container.prototype) as Container<S>;
-    (c as { factories: Factories<S> }).factories = factories;
+    (c as unknown as { factoriesChain: Factories<S> }).factoriesChain = factoriesChain;
     return c;
   }
 
-  // this is public on purpose; if the field is declared as private generated *.d.ts files do not include the field type
-  // which makes typescript compiler behave differently when resolving container types; e.g. it becomes impossible to
-  // assign a container of type Container<{ a: number, b: string }> to a variable of type Container<{ a: number }>.
-  readonly factories: Readonly<Factories<Services>>;
+  // Internal prototype-chained storage. Each `provides()` call extends this via
+  // `Object.create` so per-step construction stays O(1). The chain is null-prototype-rooted
+  // so token names that match `Object.prototype` methods (`toString`, `__proto__`, …) don't
+  // leak through reads as if they were registered services.
+  private factoriesChain!: Factories<Services>;
 
-  // Lazy flat view of `factories` used by `get` for O(1) lookup. `factories` itself is a
-  // prototype-chained map (so `provides()` stays O(1) per step), but reading from it costs
-  // O(depth-of-token) per lookup. We materialize a single own-property snapshot on the first
-  // `get` and read from it thereafter. Container instances are immutable after construction,
-  // so the snapshot stays valid for the lifetime of this container. Engines without inline
-  // caches for prototype-chain access (notably Hermes) make this materially important; even
-  // on V8 a full key sweep on a deep chain drops from O(N²) to O(N).
+  // Lazy flat own-property snapshot of `factoriesChain`. Materialized on first read of the
+  // public `factories` getter (or first `get()` call). Container instances are immutable
+  // after construction, so the snapshot stays valid for this container's lifetime.
   private flatFactories?: Factories<Services>;
 
+  /**
+   * A flat own-property map of every Service registered in this Container. Materialized
+   * lazily on first access; safe to inspect with `Object.keys` / `Object.entries` / spread.
+   *
+   * Declared as a public getter (rather than a private field) so the generated `*.d.ts`
+   * exposes the property's type — otherwise TypeScript can't tell that a container of type
+   * `Container<{ a: number, b: string }>` is assignable to `Container<{ a: number }>`.
+   */
+  get factories(): Readonly<Factories<Services>> {
+    return this.flatFactories ?? (this.flatFactories = this.buildFlatFactories());
+  }
+
   constructor(factories: MaybeMemoizedFactories<Services>) {
-    // Public path: callers may hand us raw, non-memoized factories. Memoize any own keys
-    // that aren't already memoized. Internal builders use {@link withMemoizedFactories}
-    // above to skip this scan entirely.
-    //
-    // Root the new factories at a null-prototype object so token names that match
-    // Object.prototype methods (`toString`, `constructor`, `__proto__`, …) don't leak
-    // through `get()` as if they were registered services. Non-trivial input prototypes
-    // are preserved so already-chained factory maps remain reachable.
-    const ownKeys = Object.keys(factories);
-    const proto = Object.getPrototypeOf(factories);
-    const memoizedFactories = (
-      proto && proto !== Object.prototype ? Object.create(proto) : Object.create(null)
-    ) as Factories<Services>;
-    for (const k of ownKeys) {
-      const fn = (factories as any)[k];
-      (memoizedFactories as any)[k] = isMemoized(fn) ? fn : memoize(fn);
-    }
-    this.factories = memoizedFactories;
+    // Public construction path. Flatten the input — own + inherited — into a clean
+    // null-prototype-rooted own-property map, memoizing any non-memoized factories along
+    // the way. Internal builders bypass this via {@link withMemoizedFactories} when they
+    // can guarantee the input is already memoized.
+    const root = Object.create(null) as Factories<Services>;
+    chainedForEach<(() => unknown) | Memoized<() => unknown>>(factories, (k, fn) => {
+      (root as Record<string, Memoized<() => unknown>>)[k] = isMemoized(fn) ? fn : memoize(fn);
+    });
+    (this as unknown as { factoriesChain: Factories<Services> }).factoriesChain = root;
   }
 
   /**
@@ -249,13 +249,13 @@ export class Container<Services = {}> {
     if (!scopedServices || scopedServices.length === 0) {
       // Share factories via prototype chain — the new container resolves to the same memoized
       // instances as the original.
-      return Container.withMemoizedFactories(Object.create(this.factories) as Factories<Services>);
+      return Container.withMemoizedFactories(Object.create(this.factoriesChain) as Factories<Services>);
     }
     // Override scoped tokens with freshly-memoized copies of the original delegates so the new
     // container produces independent service instances for those tokens.
-    const factories = Object.create(this.factories) as Factories<Services>;
+    const factories = Object.create(this.factoriesChain) as Factories<Services>;
     for (const token of scopedServices) {
-      factories[token] = memoize(this.factories[token].delegate);
+      factories[token] = memoize(this.factoriesChain[token].delegate);
     }
     return Container.withMemoizedFactories(factories);
   }
@@ -300,7 +300,7 @@ export class Container<Services = {}> {
 
   private buildFlatFactories(): Factories<Services> {
     const flat = Object.create(null) as Factories<Services>;
-    chainedForEach<Memoized<() => unknown>>(this.factories, (k, v) => {
+    chainedForEach<Memoized<() => unknown>>(this.factoriesChain, (k, v) => {
       (flat as Record<string, Memoized<() => unknown>>)[k] = v;
     });
     return flat;
@@ -492,9 +492,9 @@ export class Container<Services = {}> {
     // Original single-arg forms
     if (first instanceof PartialContainer || first instanceof Container) {
       const incoming = first instanceof PartialContainer ? first.getFactories(this) : first.factories;
-      // Layer the incoming factories on top of this.factories via prototype chain — O(1) base
-      // plus O(K) for K incoming keys (instead of spreading every factory in `this`).
-      const factories = Object.create(this.factories) as Factories<AddServices<Services, any>>;
+      // Layer the incoming factories on top of this.factoriesChain via prototype chain —
+      // O(1) base plus O(K) for K incoming keys (instead of spreading every factory in `this`).
+      const factories = Object.create(this.factoriesChain) as Factories<AddServices<Services, any>>;
       // `chainedForEach` walks own + inherited keys with their declared-at-level values in
       // a single pass, avoiding the O(N²) cost of `for...in` + `[k]` lookup on deep chains.
       chainedForEach(incoming, (k, v) => {
@@ -683,9 +683,9 @@ export class Container<Services = {}> {
       // Safety: getFromParent is defined if the token is in the dependencies list, so it is safe to call it.
       return fn(...(dependencies.map((t) => (t === token ? getFromParent!() : this.get(t))) as any));
     });
-    // Extend `this.factories` via prototype chain so adding a service is O(1) — a chain of N
-    // `provides` calls is O(N) total instead of O(N²).
-    const factories = Object.create(this.factories) as Factories<AddService<Services, Token, Service>>;
+    // Extend `this.factoriesChain` via prototype chain so adding a service is O(1) — a chain
+    // of N `provides` calls is O(N) total instead of O(N²).
+    const factories = Object.create(this.factoriesChain) as Factories<AddService<Services, Token, Service>>;
     (factories as any)[token] = factory;
     return Container.withMemoizedFactories(factories);
   }

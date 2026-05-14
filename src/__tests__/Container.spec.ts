@@ -576,6 +576,13 @@ describe("Container", () => {
   });
 
   describe("when accessing factories", () => {
+    test("Object.keys returns every registered token regardless of chain depth", () => {
+      // Public `factories` exposes a flat own-property view; internal chain extension via
+      // Object.create stays an implementation detail.
+      const c = Container.providesValue("a", 1).providesValue("b", 2).providesValue("c", 3);
+      expect(Object.keys(c.factories).sort()).toEqual(["a", "b", "c"]);
+    });
+
     test("the factories are returned", () => {
       let c = container.providesValue("service", "value");
       expect(c.factories.service()).toEqual("value");
@@ -611,16 +618,34 @@ describe("Container", () => {
       expect(c.get("second")).toBe(2);
     });
 
-    test("preserves a non-trivial prototype while memoizing own factories", () => {
-      // Build a factories-like object whose prototype chain holds an existing service, then
-      // mix in a non-memoized own factory. The constructor must memoize the own key while
-      // keeping the inherited service reachable.
-      const parent = Container.providesValue("inherited", "p");
-      const child = Object.create(parent.factories) as any;
-      child.fresh = () => "child";
-      const c: Container<{ inherited: string; fresh: string }> = new Container(child);
-      expect(c.get("fresh")).toBe("child");
-      expect(c.get("inherited")).toBe("p");
+    test("memoizes both own and inherited factories of a chained input", () => {
+      // The constructor must memoize EVERY enumerable factory it sees — own and inherited —
+      // otherwise inherited raw functions stay un-memoized (broken singleton semantics) and
+      // their `.delegate` is undefined (breaks `copy(['token'])`).
+      const sharedCount = { calls: 0 };
+      const protoLike: Record<string, () => unknown> = {
+        inherited: () => {
+          sharedCount.calls += 1;
+          return "inherited-value";
+        },
+      };
+      const child = Object.create(protoLike) as Record<string, () => unknown>;
+      child.fresh = () => "fresh-value";
+      const c = new Container(child) as Container<{ inherited: string; fresh: string }>;
+
+      // Resolution works for both, and the inherited factory is memoized (called once even
+      // across multiple resolutions and a scoped copy).
+      expect(c.get("fresh")).toBe("fresh-value");
+      expect(c.get("inherited")).toBe("inherited-value");
+      expect(c.get("inherited")).toBe("inherited-value");
+      expect(sharedCount.calls).toBe(1);
+
+      // copy(['inherited']) requires the inherited factory to be memoized so it has a
+      // `.delegate` to un-memoize.
+      const scoped = c.copy(["inherited"]);
+      expect(scoped.get("inherited")).toBe("inherited-value");
+      // Fresh memoization on the copy means the delegate ran once more.
+      expect(sharedCount.calls).toBe(2);
     });
   });
 
