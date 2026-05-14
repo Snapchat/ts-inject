@@ -2,12 +2,13 @@
 
 ## TL;DR
 
-Long `Container.provides().provides()...provides()` chains used to construct in O(N²) time. With a few hundred services this caused ANRs on low-end Android devices during container assembly. The fix makes chain construction O(N) per step (~O(N) total) by:
+Long `Container.provides()` and `PartialContainer.provides()` chains used to construct in O(N²) time. With a few hundred services this caused ANRs on low-end Android devices during container assembly. The fix makes chain construction O(N) per step (~O(N) total) by:
 
-1. Replacing the shallow spread of `this.factories` with prototype-chained extension (`Object.create`).
+1. Replacing the shallow spread of `this.factories` / `this.injectables` with prototype-chained extension (`Object.create`).
 2. Removing the per-step `for...in` loop in the `Container` constructor that rebinds `thisArg` on every already-memoized factory.
+3. Replacing `for...in` and `obj[k]` traversal over chained maps with a single-pass `chainedForEach` helper — `for...in` is itself O(N²) on deep `Object.create` chains in V8, as is repeated `[k]` lookup.
 
-End-to-end speedup: **20× faster for 8000-deep chains** (10,286 ms → 496 ms), **9× faster at 800**, **7.5× at 400**. All 87 tests pass with 100% line/branch/function coverage.
+End-to-end speedup at chain depth 8000: **Container** 10,286 ms → ~500 ms (~20×), **PartialContainer** 5,199 ms → ~513 ms (~10×). All 87 tests pass with 100% line/branch/function coverage.
 
 ## How to reproduce
 
@@ -15,9 +16,11 @@ End-to-end speedup: **20× faster for 8000-deep chains** (10,286 ms → 496 ms),
 npm run bench
 ```
 
-This builds chains of 50 → 8000 services and reports `ms/build`. There's also a get-pass over an 800-deep chain to track lookup cost.
+The benchmark builds Container and PartialContainer chains of 50 → 8000 services, reports `ms/build`, then probes lookup cost on an 800-deep Container and materialization cost (`Container.provides(partial)`) across the same range.
 
 ## Numbers
+
+**Container chain construction:**
 
 | N services | before (ms) | after (ms) | speedup |
 |------------|-------------|------------|---------|
@@ -30,7 +33,19 @@ This builds chains of 50 → 8000 services and reports `ms/build`. There's also 
 | 3200       | 1518.40     | 75.28      | 20.2×   |
 | 8000       | 10285.63    | 495.87     | 20.7×   |
 
-Lookup cost on an 800-deep chain went from ~0.09 ms/full-pass to ~0.95 ms/full-pass (≈1.2 µs per `get()` on first access). This is a deliberate trade — see *Trade-offs* below.
+**PartialContainer chain construction:**
+
+| N services | before (ms) | after (ms) | speedup |
+|------------|-------------|------------|---------|
+| 200        | 0.57        | 0.18       | 3.2×    |
+| 800        | 14.20       | 2.67       | 5.3×    |
+| 1600       | 134.99      | 15.90      | 8.5×    |
+| 3200       | 715.93      | 76.67      | 9.3×    |
+| 8000       | 5199.09     | 512.58     | 10.1×   |
+
+**Materialization (`Container.provides(partial)`)** remains a fast linear pass: 2.4 ms at N=8000.
+
+Lookup cost on an 800-deep Container went from ~0.09 ms/full-pass to ~0.95 ms/full-pass (≈1.2 µs per `get()` on first access). This is a deliberate trade — see *Trade-offs* below.
 
 Measured on Apple silicon, Node 20. Numbers will differ on other devices, but the relative shapes are what matter.
 
@@ -80,13 +95,16 @@ We went with **(1) + (2) together**. They compose: (1) lets us skip the construc
 
 - **`src/memoize.ts`** — dropped the `thisArg` field from `Memoized`. Memoized functions now use the call-site `this` (`memo = delegate.apply(this, args)`).
 - **`src/Container.ts`**:
-  - Constructor: fast path that *shares* an already-memoized factories object (common internal case) and a slow path that memoizes own keys while preserving any prototype chain.
+  - Constructor: memoizes any non-memoized own factories of the input while preserving any prototype chain.
+  - Private `withMemoizedFactories` factory used by internal chain builders that already guarantee memoized input; skips the constructor scan entirely.
   - `get()`: invokes the factory via `factory.call(this)` so dependencies resolve against the calling container.
   - `provides()` (per-token and Container/PartialContainer merge): builds the new factories object via `Object.create(this.factories)` instead of a spread.
   - `copy()`: same prototype-chain approach; only scoped tokens get freshly-memoized own properties.
 - **`src/PartialContainer.ts`**:
-  - `getFactories()`: drops the now-unused `thisArg` argument to `memoize`.
-  - `provides(Container)`: walks the source container's factories with `for...in` (so prototype-chained factories come through) and pre-binds each wrapper to the source container via `factory.call(first)` — preserves the old "value pulled from source container" semantics for the bridge case.
+  - `getFactories()`: drops the now-unused `thisArg` argument to `memoize`; iterates via `chainedForEach` so prototype-chained injectables come through.
+  - `addInjectable`, `provides(PartialContainer)`, `provides(Container)`: use `Object.create(this.injectables)` + `chainedForEach` instead of object spread. Per-step cost is now O(1).
+  - `getTokens()`: uses `chainedKeys` so chained injectables are included.
+- **`src/entries.ts`** — new `chainedForEach` / `chainedKeys` helpers. They walk an object's prototype chain explicitly because `for...in` (and naïve repeated `[k]` lookup) is O(N²) on deep `Object.create` chains in V8; the helpers stay linear (≈90× faster than `for...in` at depth 8000).
 
 ## Trade-offs
 

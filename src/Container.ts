@@ -11,7 +11,7 @@ import type {
   ValidTokens,
 } from "./types";
 import { ClassInjectable, ConcatInjectable, Injectable } from "./Injectable";
-import { entries } from "./entries";
+import { chainedForEach, entries } from "./entries";
 
 type MaybeMemoizedFactories<Services> = {
   [K in keyof Services]: (() => Services[K]) | Memoized<() => Services[K]>;
@@ -166,6 +166,17 @@ export class Container<Services = {}> {
     ) as Container<Services>;
   }
 
+  /**
+   * Trusted internal construction: skips the per-key memoization scan the public constructor
+   * performs, since chain-building paths (`provides`, `copy`, etc.) prepare factories that
+   * are guaranteed memoized. Keeps the per-step cost of building a `provides()` chain O(1).
+   */
+  private static withMemoizedFactories<S>(factories: Factories<S>): Container<S> {
+    const c = Object.create(Container.prototype) as Container<S>;
+    (c as { factories: Factories<S> }).factories = factories;
+    return c;
+  }
+
   // this is public on purpose; if the field is declared as private generated *.d.ts files do not include the field type
   // which makes typescript compiler behave differently when resolving container types; e.g. it becomes impossible to
   // assign a container of type Container<{ a: number, b: string }> to a variable of type Container<{ a: number }>.
@@ -174,7 +185,7 @@ export class Container<Services = {}> {
   constructor(factories: MaybeMemoizedFactories<Services>) {
     // Public path: callers may hand us raw, non-memoized factories. Memoize any own keys
     // that aren't already memoized, preserving any prototype chain so inherited memoized
-    // factories stay reachable. Internal builders use {@link withMemoizedFactories} below
+    // factories stay reachable. Internal builders use {@link withMemoizedFactories} above
     // to skip this scan entirely.
     const ownKeys = Object.keys(factories);
     const proto = Object.getPrototypeOf(factories);
@@ -186,17 +197,6 @@ export class Container<Services = {}> {
       (memoizedFactories as any)[k] = isMemoized(fn) ? fn : memoize(fn);
     }
     this.factories = memoizedFactories;
-  }
-
-  /**
-   * Trusted internal construction: skips the scan + per-key check that the public constructor
-   * performs, since chain-building paths (`provides`, `copy`, etc.) prepare factories that
-   * are guaranteed memoized. Keeps the per-step cost of building a `provides()` chain O(1).
-   */
-  private static withMemoizedFactories<S>(factories: Factories<S>): Container<S> {
-    const c = Object.create(Container.prototype) as Container<S>;
-    (c as { factories: Factories<S> }).factories = factories;
-    return c;
   }
 
   /**
@@ -470,11 +470,11 @@ export class Container<Services = {}> {
       // Layer the incoming factories on top of this.factories via prototype chain — O(1) base
       // plus O(K) for K incoming keys (instead of spreading every factory in `this`).
       const factories = Object.create(this.factories) as Factories<AddServices<Services, any>>;
-      // `for...in` walks the prototype chain so chained factories from the incoming container
-      // come through. Newer keys (own properties) override older ones (inherited).
-      for (const k in incoming) {
-        (factories as any)[k] = (incoming as any)[k];
-      }
+      // `chainedForEach` walks own + inherited keys with their declared-at-level values in
+      // a single pass, avoiding the O(N²) cost of `for...in` + `[k]` lookup on deep chains.
+      chainedForEach(incoming, (k, v) => {
+        (factories as any)[k] = v;
+      });
       return Container.withMemoizedFactories(factories);
     }
     return this.providesService(first);
