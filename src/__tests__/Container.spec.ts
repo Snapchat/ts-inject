@@ -576,6 +576,15 @@ describe("Container", () => {
   });
 
   describe("when accessing factories", () => {
+    test("direct invocation of factories[token] works for services with dependencies", () => {
+      // Pre-PR-#19, memoized factories carried `thisArg`, so calling a factory directly
+      // (bypassing `get()`) still resolved its dependencies through the container.
+      // Consumers using the public `factories` map should not see `this.get is not a
+      // function` from a dependent service.
+      const c = Container.providesValue("dep", 42).provides("svc", ["dep"] as const, (d: number) => d * 2);
+      expect(c.factories.svc()).toBe(84);
+    });
+
     test("Object.keys returns every registered token regardless of chain depth", () => {
       // Public `factories` exposes a flat own-property view; internal chain extension via
       // Object.create stays an implementation detail.

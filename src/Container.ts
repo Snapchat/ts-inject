@@ -300,8 +300,18 @@ export class Container<Services = {}> {
 
   private buildFlatFactories(): Factories<Services> {
     const flat = Object.create(null) as Factories<Services>;
+    const self = this;
     chainedForEach<Memoized<() => unknown>>(this.factoriesChain, (k, v) => {
-      (flat as Record<string, Memoized<() => unknown>>)[k] = v;
+      // Wrap each factory so direct invocation via `c.factories[token]()` resolves the
+      // service through THIS container, not through the factories map (which would
+      // otherwise be `this` inside the underlying memoized closure and break any
+      // factory that calls `this.get(...)`). Forwarding to `v.call(self)` preserves
+      // memoization — memo state lives in `v`'s closure and is shared across the chain
+      // — and keeps `get()`'s call-site `this` semantics intact since `get()` and a
+      // direct call both end up routing through `self`.
+      const bound = (() => v.call(self)) as Memoized<() => unknown>;
+      bound.delegate = v.delegate;
+      (flat as Record<string, Memoized<() => unknown>>)[k] = bound;
     });
     return flat;
   }
