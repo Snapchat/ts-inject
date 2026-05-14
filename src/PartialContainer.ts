@@ -334,22 +334,19 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    */
   getFactories(parent: Container<Dependencies>): PartialContainerFactories<Services> {
     const factories = {} as PartialContainerFactories<Services>;
-    chainedForEach<InjectableFunction<any, readonly TokenType[], TokenType, any>>(
-      this.injectables,
-      (token, fn) => {
-        (factories as any)[token] = memoize(() =>
-          fn(
-            ...(fn.dependencies.map((t) => {
-              return t === token
-                ? parent.get(t as keyof Dependencies)
-                : factories[t as keyof Services & Dependencies]
-                  ? factories[t as keyof Services]()
-                  : parent.get(t as keyof Dependencies);
-            }) as any)
-          )
-        );
-      }
-    );
+    chainedForEach<InjectableFunction<any, readonly TokenType[], TokenType, any>>(this.injectables, (token, fn) => {
+      (factories as any)[token] = memoize(() =>
+        fn(
+          ...(fn.dependencies.map((t) => {
+            return t === token
+              ? parent.get(t as keyof Dependencies)
+              : factories[t as keyof Services & Dependencies]
+                ? factories[t as keyof Services]()
+                : parent.get(t as keyof Dependencies);
+          }) as any)
+        )
+      );
+    });
     return factories;
   }
 

@@ -37,16 +37,17 @@ function timeMs(fn: () => void): number {
 
 function bench(build: (n: number) => unknown, n: number, iters: number): number {
   build(n); // warmup
-  return timeMs(() => {
-    for (let i = 0; i < iters; i++) build(n);
-  }) / iters;
+  return (
+    timeMs(() => {
+      for (let i = 0; i < iters; i++) build(n);
+    }) / iters
+  );
 }
 
 const sizes = [50, 100, 200, 400, 800, 1600, 3200, 8000];
 // More iterations for the cheap cases so we get a stable signal; fewer for the expensive ones
 // so the suite finishes in seconds rather than minutes.
-const itersFor = (n: number): number =>
-  n <= 200 ? 50 : n <= 400 ? 20 : n <= 800 ? 5 : n <= 3200 ? 3 : 2;
+const itersFor = (n: number): number => (n <= 200 ? 50 : n <= 400 ? 20 : n <= 800 ? 5 : n <= 3200 ? 3 : 2);
 
 console.log("Container chain construction:");
 console.log("size\tms/build");

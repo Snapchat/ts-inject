@@ -23,7 +23,7 @@ The benchmark builds Container and PartialContainer chains of 50 → 8000 servic
 **Container chain construction:**
 
 | N services | before (ms) | after (ms) | speedup |
-|------------|-------------|------------|---------|
+| ---------- | ----------- | ---------- | ------- |
 | 50         | 0.05        | 0.03       | ~1.7×   |
 | 100        | 0.19        | 0.08       | 2.4×    |
 | 200        | 0.81        | 0.28       | 2.9×    |
@@ -36,7 +36,7 @@ The benchmark builds Container and PartialContainer chains of 50 → 8000 servic
 **PartialContainer chain construction:**
 
 | N services | before (ms) | after (ms) | speedup |
-|------------|-------------|------------|---------|
+| ---------- | ----------- | ---------- | ------- |
 | 200        | 0.57        | 0.18       | 3.2×    |
 | 800        | 14.20       | 2.67       | 5.3×    |
 | 1600       | 134.99      | 15.90      | 8.5×    |
@@ -45,7 +45,7 @@ The benchmark builds Container and PartialContainer chains of 50 → 8000 servic
 
 **Materialization (`Container.provides(partial)`)** remains a fast linear pass: 2.4 ms at N=8000.
 
-Lookup cost on an 800-deep Container went from ~0.09 ms/full-pass to ~0.95 ms/full-pass (≈1.2 µs per `get()` on first access). This is a deliberate trade — see *Trade-offs* below.
+Lookup cost on an 800-deep Container went from ~0.09 ms/full-pass to ~0.95 ms/full-pass (≈1.2 µs per `get()` on first access). This is a deliberate trade — see _Trade-offs_ below.
 
 Measured on Apple silicon, Node 20. Numbers will differ on other devices, but the relative shapes are what matter.
 
@@ -116,17 +116,17 @@ In real applications a cold start typically touches a small handful of services,
 
 ### Subtle semantic shift: parent stays consistent after a fork
 
-Previously, building a child container `C` from a parent `B` mutated `B`'s factories to point their `thisArg` at `C`. As a result, `b.get('svc')` *after* the fork could resolve dependencies through `C` — meaning the parent was no longer a self-consistent snapshot of its own state.
+Previously, building a child container `C` from a parent `B` mutated `B`'s factories to point their `thisArg` at `C`. As a result, `b.get('svc')` _after_ the fork could resolve dependencies through `C` — meaning the parent was no longer a self-consistent snapshot of its own state.
 
 Now each container is a true snapshot: `b.get('svc')` resolves through `b`. This is captured by the new test `forking a child does not change the parent's view of its services`.
 
-This **is** a behavioral change. It's strictly more correct (and intuitive), and the existing test suite — which covers override-before-init and override-after-init for the *child* — continues to pass.
+This **is** a behavioral change. It's strictly more correct (and intuitive), and the existing test suite — which covers override-before-init and override-after-init for the _child_ — continues to pass.
 
-### What is *not* fixed: sibling isolation
+### What is _not_ fixed: sibling isolation
 
 Memoization is per-factory, not per-container. If you fork two children `C1` and `C2` from the same parent `B` and override the same token in each, the two siblings share the parent's factory for any service they didn't override. Whichever sibling resolves that service first sets the memoization, and the second sibling sees the cached value.
 
-This was equally broken in the old code (with a different failure mode: whichever container was *built* most recently won). Sibling isolation requires `copy(['token'])` to un-memoize and re-memoize per scope.
+This was equally broken in the old code (with a different failure mode: whichever container was _built_ most recently won). Sibling isolation requires `copy(['token'])` to un-memoize and re-memoize per scope.
 
 ### Public `factories` field
 
@@ -146,5 +146,6 @@ All files            |     100 |      100 |     100 |     100
 with 87/87 tests passing.
 
 Two new tests lock in semantics that the patch introduces:
+
 - `forking a child does not change the parent's view of its services` — parent stays consistent after a fork.
 - (Plus four small tests to close pre-existing coverage gaps: constructor slow path with raw factories, `InjectableCompat`, and the two `ConcatInjectable` validation branches.)

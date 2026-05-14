@@ -189,9 +189,9 @@ export class Container<Services = {}> {
     // to skip this scan entirely.
     const ownKeys = Object.keys(factories);
     const proto = Object.getPrototypeOf(factories);
-    const memoizedFactories = (proto && proto !== Object.prototype
-      ? Object.create(proto)
-      : ({} as Factories<Services>)) as Factories<Services>;
+    const memoizedFactories = (
+      proto && proto !== Object.prototype ? Object.create(proto) : ({} as Factories<Services>)
+    ) as Factories<Services>;
     for (const k of ownKeys) {
       const fn = (factories as any)[k];
       (memoizedFactories as any)[k] = isMemoized(fn) ? fn : memoize(fn);

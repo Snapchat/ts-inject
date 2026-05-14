@@ -36,9 +36,7 @@ describe("InjectableCompat", () => {
 
 describe("ConcatInjectable", () => {
   test("appends the produced value to an existing array service", () => {
-    const container = Container.providesValue("items", [1] as number[]).provides(
-      ConcatInjectable("items", () => 2)
-    );
+    const container = Container.providesValue("items", [1] as number[]).provides(ConcatInjectable("items", () => 2));
     expect(container.get("items")).toEqual([1, 2]);
   });
 
@@ -47,8 +45,6 @@ describe("ConcatInjectable", () => {
   });
 
   test("throws when factory arity does not match dependency count", () => {
-    expect(() => ConcatInjectable("items", ["dep"] as const, () => 1)).toThrowError(
-      /Function arity does not match/
-    );
+    expect(() => ConcatInjectable("items", ["dep"] as const, () => 1)).toThrowError(/Function arity does not match/);
   });
 });
