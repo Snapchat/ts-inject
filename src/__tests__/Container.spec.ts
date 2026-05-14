@@ -577,10 +577,10 @@ describe("Container", () => {
 
   describe("when accessing factories", () => {
     test("direct invocation of factories[token] works for services with dependencies", () => {
-      // Pre-PR-#19, memoized factories carried `thisArg`, so calling a factory directly
-      // (bypassing `get()`) still resolved its dependencies through the container.
-      // Consumers using the public `factories` map should not see `this.get is not a
-      // function` from a dependent service.
+      // `Container.factories` is part of the public API; consumers must be able to call a
+      // factory directly without going through `get()`, even for services whose body
+      // resolves dependencies (which would otherwise see the factories map as `this` and
+      // throw on `this.get(...)`).
       const c = Container.providesValue("dep", 42).provides("svc", ["dep"] as const, (d: number) => d * 2);
       expect(c.factories.svc()).toBe(84);
     });
@@ -615,7 +615,7 @@ describe("Container", () => {
     test("direct invocation picks up dependency overrides applied later in the chain", () => {
       // The dependent service is registered when `value` is 1; a later override sets it
       // to 2. Mirrors the equivalent get() test but goes through the factories map —
-      // both routes must honor the override (matching the pre-PR thisArg behavior).
+      // both routes must resolve through the calling container so the override is seen.
       const c = Container.providesValue("value", 1)
         .provides("svc", ["value"] as const, (v: number) => v)
         .providesValue("value", 2);
