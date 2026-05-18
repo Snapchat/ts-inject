@@ -20,26 +20,30 @@ type DepsForInjectable<F> = F extends InjectableFunction<any, infer Tokens, any,
 type ServicesOf<I> = I extends PartialContainer<infer S, any> ? S : never;
 type InternalDeps<I> = I extends PartialContainer<any, infer D> ? D : never;
 
+/** Aggregate the phantom `D` of a tuple of Multibindings into a single dependency record. */
+type UnionDeps<Mbs> = Mbs extends readonly [infer H, ...infer R]
+  ? (H extends Multibinding<any, infer D> ? D : {}) & UnionDeps<R>
+  : {};
+
 /**
  * A reified, type-branded contribution to a registry shape `S`, requiring extra dependencies `D`
  * from the core container at compose time.
  *
- * Multibindings are produced by {@link bind} and applied via {@link compose}. They let separate
- * modules contribute to the same array-typed registry tokens (e.g. `plugins`, `middlewares`)
- * without sharing a Container chain — the contributions are values that can be exported,
- * imported, and composed in one place.
+ * Multibindings are values that can be exported, imported, combined, and finally applied with
+ * {@link compose}. They let separate modules contribute to the same array-typed registry tokens
+ * (e.g. `plugins`, `middlewares`) without sharing a Container chain.
  *
- * `D` is phantom: it carries the union of dependency keys the binding's contributions need,
- * so `compose` can verify the core container satisfies them.
+ * `D` is phantom: it carries the union of dependency keys the contribution needs, so `compose`
+ * can verify the core container satisfies them.
  */
 export type Multibinding<S, D = {}> = ((core: Container<S & D>) => Container<S & D>) & {
   readonly __deps?: D;
 };
 
 /**
- * Type-level validator for `compose`: passes a binding through unchanged if its phantom deps
- * are satisfied by the core's services, otherwise tags it with a `missingDeps` field naming
- * the keys it needs.
+ * Type-level validator for `compose`: passes a binding through unchanged if its phantom deps are
+ * satisfied by the core's services, otherwise tags it with a `missingDeps` field naming the keys
+ * it needs.
  */
 type Validated<Core, Mb> = Mb extends Multibinding<any, infer D>
   ? unknown extends D
@@ -50,150 +54,150 @@ type Validated<Core, Mb> = Mb extends Multibinding<any, infer D>
   : never;
 
 /**
- * Builder for a single {@link Multibinding}. Tracks four type parameters:
- *  - `S`        — the registry shape (phantom; usually `typeof registryContainer`).
- *  - `Internal` — services brought along via {@link MultibindingBuilder.withInternal}, used to
- *                 satisfy contribution dependencies without forwarding them to the core container.
- *  - `IDeps`    — unresolved dependencies of the internal `PartialContainer`, which *do* flow
- *                 to the core.
- *  - `Deps`     — dependencies of class/injectable contributions that aren't satisfied by
- *                 `Internal`, which also flow to the core.
+ * Family of multibinding helpers bound to a specific registry shape `S`.
  *
- * The final {@link Multibinding} aggregates `IDeps & Deps` as its phantom `D`.
+ * Obtained from {@link multibindings} — either by passing a Container so `S` is inferred from
+ * its services, or by supplying `S` as a type argument when no Container instance is available.
  */
-export class MultibindingBuilder<S, Internal = {}, IDeps = {}, Deps = {}> {
-  constructor(private readonly apply: (core: Container<any>) => Container<any>) {}
-
+export interface MultibindingFactory<S> {
   /**
-   * Contribute a literal value to one of the registry's array tokens.
-   *
-   * @example
-   * ```ts
-   * bind<Registry>().contributeValue("plugins", inlinePlugin).build();
-   * ```
+   * Produce a {@link Multibinding}. Three call shapes:
+   *  - `contribute(token, value)` — appends a literal value.
+   *  - `contribute(token, ClassWithDeps)` — appends an instance built from an
+   *    {@link InjectableClass}; its `static dependencies` become the binding's required deps.
+   *  - `contribute(injectable)` — appends a value produced by a pre-built
+   *    {@link InjectableFunction}; the function's `token` selects the array, and its declared
+   *    `dependencies` become the binding's required deps.
    */
-  contributeValue<T extends ArrayTokens<S>>(
-    token: T,
-    value: ElementOf<S[T]>
-  ): MultibindingBuilder<S, Internal, IDeps, Deps> {
-    return new MultibindingBuilder<S, Internal, IDeps, Deps>((c) =>
-      this.apply(c).appendValue(token as never, value as never)
-    );
-  }
+  contribute: {
+    <
+      T extends ArrayTokens<S>,
+      F extends InjectableFunction<any, readonly string[], T, ElementOf<S[T]>>,
+    >(
+      injectable: F
+    ): Multibinding<S, DepsForInjectable<F>>;
+    <
+      T extends ArrayTokens<S>,
+      Class extends InjectableClass<any, ElementOf<S[T]>, readonly string[]>,
+    >(
+      token: T,
+      cls: Class
+    ): Multibinding<S, DepsForClass<Class>>;
+    <T extends ArrayTokens<S>>(token: T, value: ElementOf<S[T]>): Multibinding<S, {}>;
+  };
+}
 
-  /**
-   * Contribute an instance of a class to one of the registry's array tokens. The class's
-   * `static dependencies` are added to the binding's required deps and validated at
-   * {@link compose} time — dependencies already provided by a {@link withInternal} are subtracted.
-   *
-   * @example
-   * ```ts
-   * class AuthPlugin {
-   *   static dependencies = ["config"] as const;
-   *   constructor(private config: Config) {}
-   * }
-   *
-   * bind<Registry>().contributeClass("plugins", AuthPlugin).build();
-   * ```
-   */
-  contributeClass<
-    T extends ArrayTokens<S>,
-    Class extends InjectableClass<any, ElementOf<S[T]>, readonly string[]>,
-  >(
-    token: T,
-    cls: Class
-  ): MultibindingBuilder<S, Internal, IDeps, Deps & Omit<DepsForClass<Class>, keyof Internal>> {
-    return new MultibindingBuilder<S, Internal, IDeps, Deps & Omit<DepsForClass<Class>, keyof Internal>>(
-      (c) => this.apply(c).appendClass(token as never, cls as never)
-    );
+function contributeImpl(first: unknown, second?: unknown): Multibinding<any, any> {
+  // 1-arg form: contribute(injectable). The injectable carries its own token.
+  if (second === undefined) {
+    const fn = first as InjectableFunction<any, readonly string[], string, unknown>;
+    return ((core: Container<any>) => core.append(fn as never)) as Multibinding<any, any>;
   }
-
-  /**
-   * Contribute a pre-built {@link InjectableFunction} to a registry token. The injectable's
-   * own token determines which array it contributes to, and its declared `dependencies` are
-   * added to the binding's required deps (minus anything already provided by {@link withInternal}).
-   *
-   * Use this when a contribution needs a non-trivial factory — e.g. one that closes over
-   * configuration or composes other services — but doesn't fit the class shape.
-   *
-   * @example
-   * ```ts
-   * import { Injectable } from "@snap/ts-inject";
-   *
-   * const metricsPlugin = Injectable(
-   *   "plugins",
-   *   ["config", "logger"] as const,
-   *   (config: Config, logger: Logger) => new MetricsPlugin(config, logger)
-   * );
-   *
-   * bind<Registry>().contribute(metricsPlugin).build();
-   * ```
-   */
-  contribute<
-    T extends ArrayTokens<S>,
-    F extends InjectableFunction<any, readonly string[], T, ElementOf<S[T]>>,
-  >(
-    fn: F
-  ): MultibindingBuilder<S, Internal, IDeps, Deps & Omit<DepsForInjectable<F>, keyof Internal>> {
-    return new MultibindingBuilder<S, Internal, IDeps, Deps & Omit<DepsForInjectable<F>, keyof Internal>>(
-      (c) => this.apply(c).append(fn as never)
-    );
+  const token = first as never;
+  // 2-arg form, class: a function carrying a `dependencies` array (Injectables also carry one,
+  // but those should use the 1-arg form, and would be missing the `new`-ability `appendClass` expects).
+  if (typeof second === "function" && Array.isArray((second as { dependencies?: unknown }).dependencies)) {
+    const cls = second as InjectableClass<any, unknown, readonly string[]>;
+    return ((core: Container<any>) => core.appendClass(token, cls as never)) as Multibinding<any, any>;
   }
-
-  /**
-   * Attach a {@link PartialContainer} of private services that subsequent contributions in this
-   * binding can depend on. The partial's *unresolved* dependencies become required deps of the
-   * binding; its provided services are visible to later `contributeClass` / `contribute` calls
-   * but not exposed outside the binding's runtime scope.
-   *
-   * Chain `withInternal` **before** the contributions that depend on its services so the
-   * compile-time dep subtraction has the necessary information.
-   *
-   * @example
-   * ```ts
-   * const internal = new PartialContainer({})
-   *   .provides("retryPolicy", ["config"] as const, (c: Config) => new RetryPolicy(c));
-   *
-   * bind<Registry>()
-   *   .withInternal(internal)
-   *   .contributeClass("plugins", HttpPlugin) // depends on retryPolicy + anything in core
-   *   .build();
-   * ```
-   */
-  withInternal<I extends PartialContainer<any, any>>(
-    internal: I
-  ): MultibindingBuilder<S, Internal & ServicesOf<I>, IDeps & InternalDeps<I>, Omit<Deps, keyof ServicesOf<I>>> {
-    return new MultibindingBuilder<
-      S,
-      Internal & ServicesOf<I>,
-      IDeps & InternalDeps<I>,
-      Omit<Deps, keyof ServicesOf<I>>
-    >((c) => this.apply(c.provides(internal) as Container<any>));
-  }
-
-  /** Finalize this builder into a portable {@link Multibinding} value. */
-  build(): Multibinding<S, IDeps & Deps> {
-    return this.apply as Multibinding<S, IDeps & Deps>;
-  }
+  // 2-arg form, value.
+  return ((core: Container<any>) => core.appendValue(token, second as never)) as Multibinding<any, any>;
 }
 
 /**
- * Start a multibinding against a registry shape `S`.
+ * Capture a registry shape so subsequent contribution calls don't need to repeat it. Two forms:
  *
- * `S` is a phantom — pass `typeof registry` when you already have a Container that declares the
- * array tokens, or a hand-written shape (e.g. `{ plugins: Plugin[] }`) when you don't yet.
+ *  - `multibindings(registryContainer)` — infers `S` from the container's services.
+ *  - `multibindings<S>()` — when only a type alias is available.
+ *
+ * Returns a {@link MultibindingFactory} with a `contribute` method whose overloads cover values,
+ * {@link InjectableClass}es, and pre-built {@link InjectableFunction}s.
  *
  * @example
  * ```ts
- * type Registry = { plugins: Plugin[]; middlewares: Middleware[] };
+ * // With a Container instance:
+ * const m = multibindings(registry);
+ * export const authBinding = m.contribute("plugins", AuthPlugin);
  *
- * export const authBinding = bind<Registry>()
- *   .contributeClass("plugins", AuthPlugin)
- *   .build();
+ * // With only a type:
+ * const m = multibindings<Registry>();
+ * export const inlineBinding = m.contribute("plugins", { name: "x", run: () => "x" });
  * ```
  */
-export function bind<S>(): MultibindingBuilder<S> {
-  return new MultibindingBuilder<S>((c) => c);
+export function multibindings<S>(): MultibindingFactory<S>;
+export function multibindings<S>(registry: Container<S>): MultibindingFactory<S>;
+export function multibindings<S>(_registry?: Container<S>): MultibindingFactory<S> {
+  return { contribute: contributeImpl as MultibindingFactory<S>["contribute"] };
+}
+
+/**
+ * Bundle several {@link Multibinding}s that target the same registry shape into one. The
+ * resulting binding's deps are the union of the inputs' deps and contributions are applied
+ * left-to-right.
+ *
+ * Use this when one module exports several related contributions and you'd rather pass a single
+ * value to {@link compose}.
+ *
+ * @example
+ * ```ts
+ * const m = multibindings<Registry>();
+ *
+ * export const authBindings = combine(
+ *   m.contribute("plugins", AuthPlugin),
+ *   m.contribute("plugins", OAuthPlugin),
+ *   m.contribute(authMetricsInjectable),
+ * );
+ * ```
+ */
+export function combine<S, const Mbs extends readonly Multibinding<S, any>[] = readonly []>(
+  ...bindings: Mbs
+): Multibinding<S, UnionDeps<Mbs>> {
+  return ((core: Container<any>) =>
+    bindings.reduce<Container<any>>(
+      (c, mb) => (mb as (c: Container<any>) => Container<any>)(c),
+      core
+    )) as Multibinding<S, UnionDeps<Mbs>>;
+}
+
+/**
+ * Apply contributions against a private {@link PartialContainer} of helpers that's invisible to
+ * other bindings and to consumers of the composed container's type.
+ *
+ * The partial's *unresolved* dependencies flow to the core; its *provided* services are
+ * subtracted from the contributions' deps. Subtraction is non-positional: every binding inside
+ * the call sees the partial.
+ *
+ * @example
+ * ```ts
+ * const m = multibindings<Registry>();
+ * const retryInternal = new PartialContainer({}).provides(
+ *   "retryPolicy",
+ *   ["maxRetries"] as const,
+ *   (n: number) => new RetryPolicy(n)
+ * );
+ *
+ * // HttpPlugin.dependencies = ["retryPolicy", "endpoint"]
+ * // → the composed binding requires { endpoint, maxRetries } — retryPolicy is internal.
+ * export const httpBinding = withInternal(retryInternal,
+ *   m.contribute("plugins", HttpPlugin),
+ * );
+ * ```
+ */
+export function withInternal<
+  S,
+  I extends PartialContainer<any, any>,
+  const Mbs extends readonly Multibinding<S, any>[],
+>(
+  internal: I,
+  ...bindings: Mbs
+): Multibinding<S, Omit<UnionDeps<Mbs>, keyof ServicesOf<I>> & InternalDeps<I>> {
+  return ((core: Container<any>) => {
+    const merged = core.provides(internal) as Container<any>;
+    return bindings.reduce<Container<any>>(
+      (c, mb) => (mb as (c: Container<any>) => Container<any>)(c),
+      merged
+    );
+  }) as Multibinding<S, Omit<UnionDeps<Mbs>, keyof ServicesOf<I>> & InternalDeps<I>>;
 }
 
 /**
@@ -203,7 +207,7 @@ export function bind<S>(): MultibindingBuilder<S> {
  *
  * @example
  * ```ts
- * const app = compose(core, authBinding, loggingBinding, metricsBinding);
+ * const app = compose(core, authBinding, httpBinding, metricsBinding);
  * ```
  */
 export function compose<Core, const Mbs extends readonly Multibinding<any, any>[]>(

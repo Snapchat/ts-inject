@@ -113,18 +113,18 @@ container.get("plugins"); // [AuthPlugin, LoggingPlugin, { name: "inline", ... }
 
 #### Modular Multibindings: contributing across module boundaries
 
-`appendClass` / `appendValue` work when one place owns the whole `Container` chain. They break down when you want **independent modules to contribute to the same registry without seeing each other** — the canonical plugin/middleware/extension shape. `ts-inject` solves this with `bind()` and `compose()`:
+`appendClass` / `appendValue` work when one place owns the whole `Container` chain. They break down when you want **independent modules to contribute to the same registry without seeing each other** — the canonical plugin/middleware/extension shape. `ts-inject` solves this with `multibindings()` and `compose()`:
 
-- `bind<Registry>()` starts a self-contained contribution against a registry shape (typically `typeof someContainer`, but a plain type alias works too).
-- `.contributeValue` / `.contributeClass` / `.contribute` add entries to one of the registry's array tokens; dependencies declared by a class or `Injectable()` flow into the binding's phantom dependency type.
-- `.build()` produces a `Multibinding<Registry, Deps>` — a portable value modules can export.
-- `compose(core, ...bindings)` applies every binding in order, and the compiler verifies each binding's deps are present in `core`. Missing deps surface as a `missingDeps` field on the offending binding in the type error.
+- `multibindings(registry)` (or `multibindings<Registry>()` if you only have a type) returns a small factory bound to the registry shape. Its `contribute(...)` method produces a `Multibinding<Registry, Deps>` — a portable value modules can export.
+- `compose(core, ...bindings)` applies every binding to a core container in order. The compiler verifies each binding's `Deps` are present in `core`; missing keys surface as a `missingDeps` field on the offending binding rather than as a generic type mismatch.
+- `combine(...bindings)` bundles several `Multibinding`s into one — handy when a module ships a small family of contributions.
+- `withInternal(partialContainer, ...bindings)` attaches private helpers visible only to the contributions inside the call.
 
 A typical layout:
 
 ```ts
 // registry.ts — one place declares the shape of the extension points.
-import { Container } from "@snap/ts-inject";
+import { Container, multibindings } from "@snap/ts-inject";
 
 export interface Plugin { name: string; run(): void }
 
@@ -132,13 +132,13 @@ export const registry = Container
   .providesValue("plugins", [] as Plugin[])
   .providesValue("middlewares", [] as ((req: Request) => Request)[]);
 
-export type Registry = typeof registry extends import("@snap/ts-inject").Container<infer S> ? S : never;
+// Shared factory bound to the registry shape — modules import this.
+export const m = multibindings(registry);
 ```
 
 ```ts
 // auth/binding.ts — a module exports its contribution as a value.
-import { bind } from "@snap/ts-inject";
-import type { Registry } from "../registry";
+import { m } from "../registry";
 
 class AuthPlugin {
   static dependencies = ["apiKey"] as const;
@@ -147,15 +147,13 @@ class AuthPlugin {
   run() { /* ... */ }
 }
 
-export const authBinding = bind<Registry>()
-  .contributeClass("plugins", AuthPlugin)   // requires `apiKey` from the core
-  .build();
+export const authBinding = m.contribute("plugins", AuthPlugin); // requires `apiKey` from core
 ```
 
 ```ts
 // metrics/binding.ts — pre-built Injectable() works the same way.
-import { Injectable, bind } from "@snap/ts-inject";
-import type { Registry } from "../registry";
+import { Injectable } from "@snap/ts-inject";
+import { m } from "../registry";
 
 const metricsPlugin = Injectable(
   "plugins",
@@ -166,7 +164,7 @@ const metricsPlugin = Injectable(
   })
 );
 
-export const metricsBinding = bind<Registry>().contribute(metricsPlugin).build();
+export const metricsBinding = m.contribute(metricsPlugin);
 ```
 
 ```ts
@@ -187,6 +185,23 @@ app.get("plugins"); // [AuthPlugin instance, metrics plugin]
 
 If `metricsBinding` needs `statsPrefix` and the core doesn't provide it, `compose` rejects the call at compile time — the error names the missing key, not just "type mismatch".
 
+##### Bundling multiple contributions: `combine`
+
+When one module wants to export several related contributions, wrap them in `combine` instead of exporting each separately:
+
+```ts
+import { combine } from "@snap/ts-inject";
+import { m } from "../registry";
+
+export const authBindings = combine(
+  m.contribute("plugins", AuthPlugin),
+  m.contribute("plugins", OAuthPlugin),
+  m.contribute(authMetricsInjectable),
+);
+```
+
+The result is a single `Multibinding` whose deps are the union of the inputs' deps. Wire-up still passes it as one argument to `compose`.
+
 ##### Private services with `withInternal`
 
 A binding's contribution often needs a helper that isn't a registry entry — say, an `HttpPlugin` that takes a `RetryPolicy`. You have three options:
@@ -196,9 +211,10 @@ A binding's contribution often needs a helper that isn't a registry entry — sa
 3. **`withInternal`.** Attach a small `PartialContainer` of helpers that *only this binding's contributions* can see. The helper is properly DI-wired, but invisible to other bindings and to consumers of the composed container.
 
 ```ts
-import { bind, PartialContainer } from "@snap/ts-inject";
+import { PartialContainer, withInternal } from "@snap/ts-inject";
+import { m } from "../registry";
 
-const internal = new PartialContainer({}).provides(
+const retryInternal = new PartialContainer({}).provides(
   "retryPolicy",
   ["maxRetries"] as const,
   (n: number) => new RetryPolicy(n)
@@ -211,32 +227,32 @@ class HttpPlugin {
   run() { /* ... */ }
 }
 
-export const httpBinding = bind<Registry>()
-  .withInternal(internal)
-  .contributeClass("plugins", HttpPlugin)
-  .build();
+export const httpBinding = withInternal(retryInternal,
+  m.contribute("plugins", HttpPlugin),
+);
 ```
 
 **Dep-flow rule:** a binding requires whatever its contributions declare as deps, **minus** what `withInternal` provides, **plus** what `withInternal` itself depends on but doesn't provide. Above:
 
 - `HttpPlugin` declares `["retryPolicy", "endpoint"]`.
-- `withInternal` provides `retryPolicy`, and itself needs `maxRetries`.
+- `retryInternal` provides `retryPolicy` and itself needs `maxRetries`.
 - → `compose(core, httpBinding)` requires `{ endpoint, maxRetries }` from the core. `retryPolicy` is satisfied internally and doesn't appear.
 
 The privacy is enforced on both axes: `compose`'s return type doesn't include `retryPolicy` (so `app.get("retryPolicy")` is a type error), and the helper is only resolvable inside this binding's apply step at runtime.
 
-Chain `.withInternal(...)` **before** the contributions that depend on its services — the dep subtraction only sees what's been declared so far.
+Subtraction is non-positional — every binding inside the `withInternal(...)` call sees the partial, regardless of argument order.
 
 ##### When to use which
 
-| You want to…                                                                | Use                                       |
-| --------------------------------------------------------------------------- | ----------------------------------------- |
-| Append to an array in a `Container` you own end-to-end                      | `container.appendValue` / `appendClass`   |
-| Let several modules independently extend a shared registry                  | `bind()` + `compose()`                    |
-| Contribute a value with no DI                                               | `.contributeValue(token, value)`          |
-| Contribute a class whose deps live in the core                              | `.contributeClass(token, MyClass)`        |
-| Contribute a custom factory (closes over state, composes services manually) | `.contribute(Injectable(...))`            |
-| Inject a helper that's an implementation detail of one binding              | `.withInternal(partialContainer)`         |
+| You want to…                                                                | Use                                              |
+| --------------------------------------------------------------------------- | ------------------------------------------------ |
+| Append to an array in a `Container` you own end-to-end                      | `container.appendValue` / `appendClass`          |
+| Let several modules independently extend a shared registry                  | `multibindings(registry)` + `compose(core, ...)` |
+| Contribute a value with no DI                                               | `m.contribute(token, value)`                     |
+| Contribute a class whose deps live in the core                              | `m.contribute(token, MyClass)`                   |
+| Contribute a custom factory (closes over state, composes services manually) | `m.contribute(Injectable(...))`                  |
+| Bundle several contributions from one module                                | `combine(mb1, mb2, …)`                           |
+| Inject a helper that's an implementation detail of one binding              | `withInternal(partial, mb1, mb2, …)`             |
 
 ### Key Concepts
 
@@ -246,7 +262,7 @@ Chain `.withInternal(...)` **before** the contributions that depend on its servi
 - **Token**: A unique identifier for each service, used for registration and retrieval within the Container.
 - **InjectableClass**: Classes that can be instantiated by the Container. Dependencies are specified in a static `dependencies` field to enable automatic injection via `providesClass`.
 - **InjectableFunction**: A reusable factory object created by `Injectable()`. Rarely needed directly — prefer the inline `provides('token', factory)` form. Use `Injectable()` when you need to store or pass a factory to `run()`.
-- **Multibinding**: A portable, type-branded contribution to a registry container's array-typed tokens, produced by `bind()` and applied via `compose()`. Lets independent modules extend a shared registry without sharing a Container chain.
+- **Multibinding**: A portable, type-branded contribution to a registry container's array-typed tokens, produced by `multibindings(registry).contribute(...)` and applied via `compose()`. Lets independent modules extend a shared registry without sharing a Container chain.
 
 ### API Reference
 
