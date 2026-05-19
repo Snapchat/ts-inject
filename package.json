@@ -1,6 +1,6 @@
 {
   "name": "@snap/ts-inject",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "100% typesafe dependency injection framework for TypeScript projects",
   "license": "MIT",
   "author": "Snap Inc.",
@@ -28,6 +28,7 @@
     "format:fix": "npm run format:check -- --write || exit 0",
     "test": "jest",
     "test:watch": "jest --clearCache && jest --watch",
+    "bench": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2020\",\"esModuleInterop\":true}' ts-node --transpile-only benchmarks/index.ts",
     "compile": "tsc -b ./tsconfig.cjs.json ./tsconfig.esm.json ./tsconfig.types.json",
     "docs": "typedoc src/index.ts",
     "build": "rm -rf dist && rm -rf docs && npm run compile && npm run docs"

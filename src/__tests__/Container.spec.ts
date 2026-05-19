@@ -1,5 +1,5 @@
 // eslint-disable-next-line max-classes-per-file
-import { Container } from "../Container";
+import { CONTAINER, Container } from "../Container";
 import { Injectable } from "../Injectable";
 import { PartialContainer } from "../PartialContainer";
 import type { InjectableFunction } from "../types";
@@ -405,6 +405,58 @@ describe("Container", () => {
     });
   });
 
+  describe("when a service depends on the $container token", () => {
+    test("the service receives the container that resolved it", () => {
+      const initial = Container.providesValue("value", 10);
+      const extended = initial.provides(
+        Injectable("service", [CONTAINER] as const, (c: typeof initial) => c.get("value") * 2)
+      );
+      expect(extended.get("service")).toBe(20);
+    });
+
+    test("after a fork with an override, $container resolves through the forked child", () => {
+      const parent = Container.providesValue("value", 1).provides(
+        Injectable("service", [CONTAINER] as const, (c: any) => c.get("value") * 10)
+      );
+      // Fork an override without first resolving on the parent.
+      const child = parent.providesValue("value", 5);
+      expect(child.get("service")).toBe(50);
+    });
+  });
+
+  describe("when token names collide with Object.prototype properties", () => {
+    test("registered tokens that shadow Object.prototype methods resolve correctly", () => {
+      const c = Container.providesValue("toString", "custom-toString")
+        .providesValue("hasOwnProperty", 42)
+        .providesValue("constructor", "fake-ctor");
+      expect(c.get("toString")).toBe("custom-toString");
+      expect(c.get("hasOwnProperty")).toBe(42);
+      expect(c.get("constructor")).toBe("fake-ctor");
+    });
+
+    test("unregistered tokens that match Object.prototype methods still throw", () => {
+      // Without the null-prototype root, `c.factories.toString` would return
+      // Object.prototype.toString and silently invoke it instead of throwing.
+      const c = Container.providesValue("foo", 1) as Container<any>;
+      expect(() => c.get("toString")).toThrowError(/Could not find Service for Token "toString"/);
+      expect(() => c.get("constructor")).toThrowError(/Could not find Service for Token "constructor"/);
+    });
+  });
+
+  describe("on a deep dependency chain", () => {
+    test("resolves a 100-deep linear chain to the correct values", () => {
+      const SIZE = 100;
+      let c: Container<any> = Container.providesValue("v0", 0);
+      for (let i = 1; i <= SIZE; i++) {
+        c = c.provides(`v${i}`, [`v${i - 1}`] as const, (prev: number) => prev + 1);
+      }
+      expect(c.get(`v${SIZE}`)).toBe(SIZE);
+      // Re-resolve a shallow service after the deep walk to confirm memoization stays distinct.
+      expect(c.get("v0")).toBe(0);
+      expect(c.get("v50")).toBe(50);
+    });
+  });
+
   describe("overrides", () => {
     test("overriding value is supplied to the parent container function as a dependency", () => {
       let containerWithOverride = Container.providesValue("value", 1)
@@ -422,6 +474,21 @@ describe("Container", () => {
 
       let childContainerWithOverride = parentContainer.providesValue("value", 2);
       expect(childContainerWithOverride.get("service")).toBe(1);
+    });
+
+    test("forking a child does not change the parent's view of its services", () => {
+      // The parent must remain a self-consistent snapshot: resolving a service via the parent
+      // continues to use the parent's own dependencies, regardless of overrides applied in a
+      // forked child.
+      const parent = Container.providesValue("value", 1).provides(
+        Injectable("service", ["value"], (value: number) => value)
+      );
+      // Fork a child with an override; do NOT resolve anything on the child before reading from
+      // the parent. (Once a shared factory is resolved by any container, subsequent reads return
+      // the memoized value — sibling isolation requires copy(['token']).)
+      parent.providesValue("value", 2);
+      expect(parent.get("service")).toBe(1);
+      expect(parent.get("value")).toBe(1);
     });
 
     test("overriding with a different type changes resulting container's type", () => {
@@ -473,6 +540,26 @@ describe("Container", () => {
       // The InjectableFunction was used to create a separate Service instance for each Container.
       expect(injectable).toBeCalledTimes(2);
     });
+
+    test("scoped copy on a deeply chained container produces a fresh memoization", () => {
+      // Bury the scoped service deep in a chain to exercise prototype-chain copy semantics.
+      let counter = 0;
+      let c: Container<any> = Container.providesValue("base", 1);
+      for (let i = 0; i < 50; i++) c = c.providesValue(`pad${i}`, i);
+      c = c.provides("counter", () => ++counter);
+      for (let i = 0; i < 50; i++) c = c.providesValue(`tail${i}`, i);
+
+      const originalValue = c.get("counter");
+      const copy = c.copy(["counter"]);
+      const copiedValue = copy.get("counter");
+
+      expect(originalValue).toBe(1);
+      expect(copiedValue).toBe(2);
+      // Original's memoization is untouched.
+      expect(c.get("counter")).toBe(1);
+      // Non-scoped, inherited services still share memoization with the original.
+      expect(copy.get("tail10")).toBe(c.get("tail10"));
+    });
   });
 
   describe("when running a Service", () => {
@@ -489,9 +576,122 @@ describe("Container", () => {
   });
 
   describe("when accessing factories", () => {
+    test("direct invocation of factories[token] works for services with dependencies", () => {
+      // `Container.factories` is part of the public API; consumers must be able to call a
+      // factory directly without going through `get()`, even for services whose body
+      // resolves dependencies (which would otherwise see the factories map as `this` and
+      // throw on `this.get(...)`).
+      const c = Container.providesValue("dep", 42).provides("svc", ["dep"] as const, (d: number) => d * 2);
+      expect(c.factories.svc()).toBe(84);
+    });
+
+    test("get() and a direct factories[token]() call share memoization", () => {
+      // The underlying memoized factory runs at most once regardless of which entry
+      // point hits it first; both routes return the same instance.
+      let runs = 0;
+      const c = Container.providesValue("dep", 10).provides("svc", ["dep"] as const, (d: number) => {
+        runs += 1;
+        return { value: d };
+      });
+      const viaGet = c.get("svc");
+      const viaDirect = c.factories.svc();
+      expect(viaGet).toBe(viaDirect);
+      expect(runs).toBe(1);
+    });
+
+    test("direct invocation works for a service inherited via a deep chain", () => {
+      // `svc` is registered near the base; descendants reach it through the prototype
+      // chain. Direct invocation on a descendant must still route resolution through
+      // that descendant's flat view, not throw on the chain walk.
+      let c: Container<any> = Container.providesValue("dep", 5).provides(
+        "svc",
+        ["dep"] as const,
+        (d: number) => d * 10
+      );
+      for (let i = 0; i < 50; i++) c = c.providesValue(`pad${i}`, i);
+      expect(c.factories.svc()).toBe(50);
+    });
+
+    test("direct invocation picks up dependency overrides applied later in the chain", () => {
+      // The dependent service is registered when `value` is 1; a later override sets it
+      // to 2. Mirrors the equivalent get() test but goes through the factories map —
+      // both routes must resolve through the calling container so the override is seen.
+      const c = Container.providesValue("value", 1)
+        .provides("svc", ["value"] as const, (v: number) => v)
+        .providesValue("value", 2);
+      expect(c.factories.svc()).toBe(2);
+    });
+
+    test("Object.keys returns every registered token regardless of chain depth", () => {
+      // Public `factories` exposes a flat own-property view; internal chain extension via
+      // Object.create stays an implementation detail.
+      const c = Container.providesValue("a", 1).providesValue("b", 2).providesValue("c", 3);
+      expect(Object.keys(c.factories).sort()).toEqual(["a", "b", "c"]);
+    });
+
     test("the factories are returned", () => {
       let c = container.providesValue("service", "value");
       expect(c.factories.service()).toEqual("value");
+    });
+  });
+
+  describe("when constructed with raw, non-memoized factories", () => {
+    test("the constructor memoizes them and resolution works", () => {
+      // Exercises the constructor's slow path — internal builders feed pre-memoized factories,
+      // so this path is only hit when the constructor is called directly with raw functions.
+      const raw = { a: () => 1, b: () => "two" };
+      const c = new Container(raw);
+      expect(c.get("a")).toBe(1);
+      expect(c.get("b")).toBe("two");
+    });
+
+    test("memoization holds across repeated gets", () => {
+      const factory = jest.fn(() => ({}));
+      const c = new Container({ thing: factory });
+      const first = c.get("thing");
+      const second = c.get("thing");
+      expect(first).toBe(second);
+      expect(factory).toHaveBeenCalledTimes(1);
+    });
+
+    test("passes through already-memoized own factories on the slow path", () => {
+      // Slow path is entered because `raw` has at least one non-memoized own factory; the
+      // already-memoized `memoized` own factory must be preserved as-is.
+      const memoized = Container.providesValue("first", 1).factories.first;
+      const mixed = { first: memoized, second: () => 2 };
+      const c: Container<{ first: number; second: number }> = new Container(mixed);
+      expect(c.get("first")).toBe(1);
+      expect(c.get("second")).toBe(2);
+    });
+
+    test("memoizes both own and inherited factories of a chained input", () => {
+      // The constructor must memoize EVERY enumerable factory it sees — own and inherited —
+      // otherwise inherited raw functions stay un-memoized (broken singleton semantics) and
+      // their `.delegate` is undefined (breaks `copy(['token'])`).
+      const sharedCount = { calls: 0 };
+      const protoLike: Record<string, () => unknown> = {
+        inherited: () => {
+          sharedCount.calls += 1;
+          return "inherited-value";
+        },
+      };
+      const child = Object.create(protoLike) as Record<string, () => unknown>;
+      child.fresh = () => "fresh-value";
+      const c = new Container(child) as Container<{ inherited: string; fresh: string }>;
+
+      // Resolution works for both, and the inherited factory is memoized (called once even
+      // across multiple resolutions and a scoped copy).
+      expect(c.get("fresh")).toBe("fresh-value");
+      expect(c.get("inherited")).toBe("inherited-value");
+      expect(c.get("inherited")).toBe("inherited-value");
+      expect(sharedCount.calls).toBe(1);
+
+      // copy(['inherited']) requires the inherited factory to be memoized so it has a
+      // `.delegate` to un-memoize.
+      const scoped = c.copy(["inherited"]);
+      expect(scoped.get("inherited")).toBe("inherited-value");
+      // Fresh memoization on the copy means the delegate ran once more.
+      expect(sharedCount.calls).toBe(2);
     });
   });
 

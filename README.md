@@ -88,6 +88,10 @@ const db = appContainer.get("Database");
 db.save("user2"); // Log: Saving record: user2
 ```
 
+> **Note:** Each registration method (`provides`, `providesValue`, `providesClass`, etc.)
+> returns a **new child container** — the original container is never modified.
+> Always use the returned value; calls whose return value is discarded have no effect.
+
 You can also bootstrap a container from a plain object with `fromObject`:
 
 ```ts

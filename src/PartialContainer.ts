@@ -1,4 +1,4 @@
-import { entries } from "./entries";
+import { chainedForEach, chainedKeys, entries } from "./entries";
 import type { Memoized } from "./memoize";
 import { memoize } from "./memoize";
 import { Container } from "./Container";
@@ -103,7 +103,32 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     return container as PartialContainer<Services, {}>;
   }
 
-  constructor(private readonly injectables: Injectables<Services, Dependencies>) {}
+  /**
+   * Trusted internal construction: skips the constructor's input-normalization pass since
+   * chain-building paths (`addInjectable`, `provides`) prepare an injectables object that is
+   * already null-prototype-rooted and chain-extended. Keeps per-step cost O(1).
+   */
+  private static withInjectables<S, D>(injectables: Injectables<S, D>): PartialContainer<S, D> {
+    const p = Object.create(PartialContainer.prototype) as PartialContainer<S, D>;
+    (p as unknown as { injectables: Injectables<S, D> }).injectables = injectables;
+    return p;
+  }
+
+  // Internal prototype-chained storage. Each `provides()` call extends this via
+  // `Object.create` so per-step construction stays O(1). Rooted at a null-prototype object
+  // so token names that match `Object.prototype` methods (`__proto__`, `toString`, …) don't
+  // trigger inherited setters or shadow inherited methods through reads.
+  private readonly injectables!: Injectables<Services, Dependencies>;
+
+  constructor(input: Injectables<Services, Dependencies>) {
+    // Public construction path. Flatten the input (own + inherited) into a null-prototype-
+    // rooted own-property map. Internal builders bypass this via {@link withInjectables}.
+    const root = Object.create(null) as Injectables<Services, Dependencies>;
+    chainedForEach<InjectableFunction<any, readonly TokenType[], TokenType, any>>(input, (k, fn) => {
+      (root as any)[k] = fn;
+    });
+    (this as unknown as { injectables: Injectables<Services, Dependencies> }).injectables = root;
+  }
 
   /**
    * Create a new PartialContainer which provides a Service created by a pre-built InjectableFunction.
@@ -236,16 +261,24 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     }
     // provides(PartialContainer)
     if (first instanceof PartialContainer) {
-      return new PartialContainer({ ...this.injectables, ...first.injectables } as any);
+      // Layer the other partial's injectables on top via prototype chain. `chainedForEach`
+      // visits own + inherited bindings in a single linear pass.
+      const injectables = Object.create(this.injectables);
+      chainedForEach(first.injectables, (key, fn) => {
+        injectables[key] = fn;
+      });
+      return PartialContainer.withInjectables(injectables);
     }
     // provides(Container)
     if (first instanceof Container) {
-      const containerInjectables: Record<string, InjectableFunction<any, readonly TokenType[], TokenType, any>> = {};
-      for (const key of Object.keys(first.factories)) {
-        const factory = first.factories[key];
-        containerInjectables[key] = Injectable(key, () => factory());
-      }
-      return new PartialContainer({ ...this.injectables, ...containerInjectables } as any);
+      const sourceFactories = first.factories;
+      const injectables = Object.create(this.injectables);
+      // Bind each wrapper to the source container so the injectable resolves dependencies
+      // from there when it runs in a different container's context.
+      chainedForEach<(this: Container<any>) => any>(sourceFactories, (key, factory) => {
+        injectables[key] = Injectable(key, () => factory.call(first));
+      });
+      return PartialContainer.withInjectables(injectables);
     }
     // Original single-arg form: provides(InjectableFunction)
     return this.addInjectable((first as any).token, first as any);
@@ -255,7 +288,11 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     token: TokenType,
     fn: InjectableFunction<any, readonly TokenType[], TokenType, any>
   ): PartialContainer<any, any> {
-    return new PartialContainer({ ...this.injectables, [token]: fn } as any);
+    // Extend `this.injectables` via prototype chain so each `provides()` is O(1) — a chain
+    // of N calls is O(N) total instead of O(N²).
+    const injectables = Object.create(this.injectables);
+    injectables[token] = fn;
+    return PartialContainer.withInjectables(injectables);
   }
 
   /**
@@ -321,26 +358,27 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param parent A [Container] which provides all the required Dependencies of this PartialContainer.
    */
   getFactories(parent: Container<Dependencies>): PartialContainerFactories<Services> {
-    let factories: PartialContainerFactories<Services> | undefined = undefined;
-    return (factories = Object.fromEntries(
-      entries(this.injectables).map(([token, fn]) => [
-        token,
-        memoize(parent, () =>
-          fn(
-            ...(fn.dependencies.map((t) => {
-              return t === token
-                ? parent.get(t as keyof Dependencies)
-                : factories![t as keyof Services & Dependencies]
-                  ? factories![t]()
-                  : parent.get(t as keyof Dependencies);
-            }) as any)
-          )
-        ),
-      ])
-    ) as PartialContainerFactories<Services>);
+    // Null-prototype root so token names that match `Object.prototype` methods
+    // (`__proto__`, `toString`, …) get stored as own properties instead of triggering
+    // inherited setters.
+    const factories = Object.create(null) as PartialContainerFactories<Services>;
+    chainedForEach<InjectableFunction<any, readonly TokenType[], TokenType, any>>(this.injectables, (token, fn) => {
+      (factories as any)[token] = memoize(() =>
+        fn(
+          ...(fn.dependencies.map((t) => {
+            return t === token
+              ? parent.get(t as keyof Dependencies)
+              : factories[t as keyof Services & Dependencies]
+                ? factories[t as keyof Services]()
+                : parent.get(t as keyof Dependencies);
+          }) as any)
+        )
+      );
+    });
+    return factories;
   }
 
   getTokens(): Array<keyof Services> {
-    return Object.keys(this.injectables) as Array<keyof Services>;
+    return chainedKeys(this.injectables) as Array<keyof Services>;
   }
 }
