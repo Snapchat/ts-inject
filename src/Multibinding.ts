@@ -11,11 +11,12 @@ type DepsForClass<C> = C extends { readonly dependencies: readonly (infer K exte
   ? Record<K, unknown>
   : {};
 
-type DepsForInjectable<F> = F extends InjectableFunction<any, infer Tokens, any, any>
-  ? Tokens extends readonly (infer K extends string)[]
-    ? Record<K, unknown>
-    : {}
-  : {};
+type DepsForInjectable<F> =
+  F extends InjectableFunction<any, infer Tokens, any, any>
+    ? Tokens extends readonly (infer K extends string)[]
+      ? Record<K, unknown>
+      : {}
+    : {};
 
 type ServicesOf<I> = I extends PartialContainer<infer S, any> ? S : never;
 type InternalDeps<I> = I extends PartialContainer<any, infer D> ? D : never;
@@ -45,13 +46,14 @@ export type Multibinding<S, D = {}> = ((core: Container<S & D>) => Container<S &
  * satisfied by the core's services, otherwise tags it with a `missingDeps` field naming the keys
  * it needs.
  */
-type Validated<Core, Mb> = Mb extends Multibinding<any, infer D>
-  ? unknown extends D
-    ? Mb
-    : keyof D extends keyof Core
+type Validated<Core, Mb> =
+  Mb extends Multibinding<any, infer D>
+    ? unknown extends D
       ? Mb
-      : Mb & { readonly missingDeps: Exclude<keyof D & string, keyof Core & string> }
-  : never;
+      : keyof D extends keyof Core
+        ? Mb
+        : Mb & { readonly missingDeps: Exclude<keyof D & string, keyof Core & string> }
+    : never;
 
 /**
  * Family of multibinding helpers bound to a specific registry shape `S`.
@@ -70,16 +72,10 @@ export interface MultibindingFactory<S> {
    *    `dependencies` become the binding's required deps.
    */
   contribute: {
-    <
-      T extends ArrayTokens<S>,
-      F extends InjectableFunction<any, readonly string[], T, ElementOf<S[T]>>,
-    >(
+    <T extends ArrayTokens<S>, F extends InjectableFunction<any, readonly string[], T, ElementOf<S[T]>>>(
       injectable: F
     ): Multibinding<S, DepsForInjectable<F>>;
-    <
-      T extends ArrayTokens<S>,
-      Class extends InjectableClass<any, ElementOf<S[T]>, readonly string[]>,
-    >(
+    <T extends ArrayTokens<S>, Class extends InjectableClass<any, ElementOf<S[T]>, readonly string[]>>(
       token: T,
       cls: Class
     ): Multibinding<S, DepsForClass<Class>>;
@@ -153,10 +149,10 @@ export function combine<S, const Mbs extends readonly Multibinding<S, any>[] = r
   ...bindings: Mbs
 ): Multibinding<S, UnionDeps<Mbs>> {
   return ((core: Container<any>) =>
-    bindings.reduce<Container<any>>(
-      (c, mb) => (mb as (c: Container<any>) => Container<any>)(c),
-      core
-    )) as Multibinding<S, UnionDeps<Mbs>>;
+    bindings.reduce<Container<any>>((c, mb) => (mb as (c: Container<any>) => Container<any>)(c), core)) as Multibinding<
+    S,
+    UnionDeps<Mbs>
+  >;
 }
 
 /**
@@ -187,16 +183,10 @@ export function withInternal<
   S,
   I extends PartialContainer<any, any>,
   const Mbs extends readonly Multibinding<S, any>[],
->(
-  internal: I,
-  ...bindings: Mbs
-): Multibinding<S, Omit<UnionDeps<Mbs>, keyof ServicesOf<I>> & InternalDeps<I>> {
+>(internal: I, ...bindings: Mbs): Multibinding<S, Omit<UnionDeps<Mbs>, keyof ServicesOf<I>> & InternalDeps<I>> {
   return ((core: Container<any>) => {
     const merged = core.provides(internal) as Container<any>;
-    return bindings.reduce<Container<any>>(
-      (c, mb) => (mb as (c: Container<any>) => Container<any>)(c),
-      merged
-    );
+    return bindings.reduce<Container<any>>((c, mb) => (mb as (c: Container<any>) => Container<any>)(c), merged);
   }) as Multibinding<S, Omit<UnionDeps<Mbs>, keyof ServicesOf<I>> & InternalDeps<I>>;
 }
 

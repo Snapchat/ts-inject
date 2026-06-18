@@ -126,11 +126,15 @@ A typical layout:
 // registry.ts — one place declares the shape of the extension points.
 import { Container, multibindings } from "@snap/ts-inject";
 
-export interface Plugin { name: string; run(): void }
+export interface Plugin {
+  name: string;
+  run(): void;
+}
 
-export const registry = Container
-  .providesValue("plugins", [] as Plugin[])
-  .providesValue("middlewares", [] as ((req: Request) => Request)[]);
+export const registry = Container.providesValue("plugins", [] as Plugin[]).providesValue(
+  "middlewares",
+  [] as ((req: Request) => Request)[]
+);
 
 // Shared factory bound to the registry shape — modules import this.
 export const m = multibindings(registry);
@@ -144,7 +148,9 @@ class AuthPlugin {
   static dependencies = ["apiKey"] as const;
   readonly name = "auth";
   constructor(private apiKey: string) {}
-  run() { /* ... */ }
+  run() {
+    /* ... */
+  }
 }
 
 export const authBinding = m.contribute("plugins", AuthPlugin); // requires `apiKey` from core
@@ -196,7 +202,7 @@ import { m } from "../registry";
 export const authBindings = combine(
   m.contribute("plugins", AuthPlugin),
   m.contribute("plugins", OAuthPlugin),
-  m.contribute(authMetricsInjectable),
+  m.contribute(authMetricsInjectable)
 );
 ```
 
@@ -208,7 +214,7 @@ A binding's contribution often needs a helper that isn't a registry entry — sa
 
 1. **Hard-code it** (`new RetryPolicy(3)` in the constructor). No DI, no config, no test seam.
 2. **Add `retryPolicy` to the core container.** Now every other binding can see it, the core's service type lists it, and you've leaked one plugin's implementation detail into the global namespace.
-3. **`withInternal`.** Attach a small `PartialContainer` of helpers that *only this binding's contributions* can see. The helper is properly DI-wired, but invisible to other bindings and to consumers of the composed container.
+3. **`withInternal`.** Attach a small `PartialContainer` of helpers that _only this binding's contributions_ can see. The helper is properly DI-wired, but invisible to other bindings and to consumers of the composed container.
 
 ```ts
 import { PartialContainer, withInternal } from "@snap/ts-inject";
@@ -223,13 +229,16 @@ const retryInternal = new PartialContainer({}).provides(
 class HttpPlugin {
   static dependencies = ["retryPolicy", "endpoint"] as const;
   readonly name = "http";
-  constructor(private retry: RetryPolicy, private endpoint: string) {}
-  run() { /* ... */ }
+  constructor(
+    private retry: RetryPolicy,
+    private endpoint: string
+  ) {}
+  run() {
+    /* ... */
+  }
 }
 
-export const httpBinding = withInternal(retryInternal,
-  m.contribute("plugins", HttpPlugin),
-);
+export const httpBinding = withInternal(retryInternal, m.contribute("plugins", HttpPlugin));
 ```
 
 **Dep-flow rule:** a binding requires whatever its contributions declare as deps, **minus** what `withInternal` provides, **plus** what `withInternal` itself depends on but doesn't provide. Above:

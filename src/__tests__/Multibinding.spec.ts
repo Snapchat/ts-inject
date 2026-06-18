@@ -32,10 +32,7 @@ describe("Multibinding", () => {
       const b: Plugin = { name: "b", run: () => "b" };
 
       const core = Container.providesValue("plugins", [] as Plugin[]);
-      expect(compose(core, m.contribute("plugins", a), m.contribute("plugins", b)).get("plugins")).toEqual([
-        a,
-        b,
-      ]);
+      expect(compose(core, m.contribute("plugins", a), m.contribute("plugins", b)).get("plugins")).toEqual([a, b]);
     });
   });
 
@@ -53,7 +50,11 @@ describe("Multibinding", () => {
       const binding = m.contribute("plugins", AuthPlugin);
       const core = Container.providesValue("apiKey", "secret").providesValue("plugins", [] as Plugin[]);
 
-      expect(compose(core, binding).get("plugins").map((p) => p.run())).toEqual(["auth:secret"]);
+      expect(
+        compose(core, binding)
+          .get("plugins")
+          .map((p) => p.run())
+      ).toEqual(["auth:secret"]);
     });
 
     test("compose reports missing class deps as a type error", () => {
@@ -85,14 +86,22 @@ describe("Multibinding", () => {
       const binding = m.contribute(metricsPlugin);
       const core = Container.providesValue("statsPrefix", "app").providesValue("plugins", [] as Plugin[]);
 
-      expect(compose(core, binding).get("plugins").map((p) => p.run())).toEqual(["app.requests"]);
+      expect(
+        compose(core, binding)
+          .get("plugins")
+          .map((p) => p.run())
+      ).toEqual(["app.requests"]);
     });
 
     test("zero-dep Injectable", () => {
       const ping = Injectable("plugins", (): Plugin => ({ name: "ping", run: () => "pong" }));
       const core = Container.providesValue("plugins", [] as Plugin[]);
 
-      expect(compose(core, m.contribute(ping)).get("plugins").map((p) => p.run())).toEqual(["pong"]);
+      expect(
+        compose(core, m.contribute(ping))
+          .get("plugins")
+          .map((p) => p.run())
+      ).toEqual(["pong"]);
     });
   });
 
@@ -112,7 +121,11 @@ describe("Multibinding", () => {
       const bundle = combine(m.contribute("plugins", inline), m.contribute("plugins", Logging));
 
       const core = Container.providesValue("label", "dev").providesValue("plugins", [] as Plugin[]);
-      expect(compose(core, bundle).get("plugins").map((p) => p.run())).toEqual(["inline", "log:dev"]);
+      expect(
+        compose(core, bundle)
+          .get("plugins")
+          .map((p) => p.run())
+      ).toEqual(["inline", "log:dev"]);
     });
 
     test("combine() with no bindings is the identity", () => {
@@ -151,26 +164,29 @@ describe("Multibinding", () => {
       class HttpPlugin implements Plugin {
         static dependencies = ["retryPolicy", "endpoint"] as const;
         readonly name = "http";
-        constructor(private retry: { tries: number }, private endpoint: string) {}
+        constructor(
+          private retry: { tries: number },
+          private endpoint: string
+        ) {}
         run() {
           return `${this.endpoint}#${this.retry.tries}`;
         }
       }
 
-      const internal = new PartialContainer({}).provides(
-        "retryPolicy",
-        ["maxRetries"] as const,
-        (n: number) => ({ tries: n })
-      );
+      const internal = new PartialContainer({}).provides("retryPolicy", ["maxRetries"] as const, (n: number) => ({
+        tries: n,
+      }));
 
       const binding = withInternal(internal, m.contribute("plugins", HttpPlugin));
       const core = Container.providesValue("endpoint", "https://api.example.com")
         .providesValue("maxRetries", 3)
         .providesValue("plugins", [] as Plugin[]);
 
-      expect(compose(core, binding).get("plugins").map((p) => p.run())).toEqual([
-        "https://api.example.com#3",
-      ]);
+      expect(
+        compose(core, binding)
+          .get("plugins")
+          .map((p) => p.run())
+      ).toEqual(["https://api.example.com#3"]);
     });
 
     test("internal services are visible to every binding inside the call, regardless of order", () => {
@@ -185,14 +201,14 @@ describe("Multibinding", () => {
 
       const internal = new PartialContainer({}).provides("retryPolicy", () => ({ tries: 5 }));
 
-      const binding = withInternal(
-        internal,
-        m.contribute("plugins", UsesRetry),
-        m.contribute("plugins", UsesRetry)
-      );
+      const binding = withInternal(internal, m.contribute("plugins", UsesRetry), m.contribute("plugins", UsesRetry));
 
       const core = Container.providesValue("plugins", [] as Plugin[]);
-      expect(compose(core, binding).get("plugins").map((p) => p.run())).toEqual(["tries:5", "tries:5"]);
+      expect(
+        compose(core, binding)
+          .get("plugins")
+          .map((p) => p.run())
+      ).toEqual(["tries:5", "tries:5"]);
     });
 
     test("compose still flags unresolved internal dependencies", () => {
@@ -204,11 +220,9 @@ describe("Multibinding", () => {
           return `tries:${this.retry.tries}`;
         }
       }
-      const internal = new PartialContainer({}).provides(
-        "retryPolicy",
-        ["maxRetries"] as const,
-        (n: number) => ({ tries: n })
-      );
+      const internal = new PartialContainer({}).provides("retryPolicy", ["maxRetries"] as const, (n: number) => ({
+        tries: n,
+      }));
       const binding = withInternal(internal, m.contribute("plugins", HttpPlugin));
 
       const core = Container.providesValue("plugins", [] as Plugin[]);
@@ -243,7 +257,11 @@ describe("Multibinding", () => {
       );
 
       const core = registry.providesValue("token", "tok");
-      expect(compose(core, bundle).get("plugins").map((p) => p.name)).toEqual(["inline", "wd", "factory"]);
+      expect(
+        compose(core, bundle)
+          .get("plugins")
+          .map((p) => p.name)
+      ).toEqual(["inline", "wd", "factory"]);
     });
   });
 
