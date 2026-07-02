@@ -397,6 +397,15 @@ describe("Container", () => {
       const container: Container<{ TestService: string }> = new Container({} as any);
       expect(() => container.get("TestService")).toThrowError('Could not find Service for Token "TestService"');
     });
+
+    test("a factory returning undefined is only invoked once", () => {
+      const factory = jest.fn().mockReturnValue(undefined);
+      const containerWithService = Container.provides("TestService", factory);
+
+      expect(containerWithService.get("TestService")).toBeUndefined();
+      expect(containerWithService.get("TestService")).toBeUndefined();
+      expect(factory).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("when getting the Container Token", () => {
