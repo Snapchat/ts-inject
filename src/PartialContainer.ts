@@ -337,8 +337,52 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     Tokens extends Class["dependencies"],
     Service extends ConstructorReturnType<Class>,
     Token extends TokenType,
-  >(token: Token, cls: Class) {
-    return this.provides<AdditionalDependencies, Tokens, Token, Service>(ClassInjectable(token, cls));
+  >(
+    token: Token,
+    cls: Class
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof Services
+    >
+  >;
+
+  /**
+   * Lazily provides a class Service while retaining compile-time tracking of unresolved dependencies.
+   *
+   * @example
+   * ```ts
+   * const partial = new PartialContainer({}).providesClass("foo", () => Foo);
+   * ```
+   *
+   * @param token the Token by which the class will be known.
+   * @param getClass a zero-argument function returning the class to instantiate.
+   */
+  providesClass<
+    Class extends InjectableClass<any, any, any>,
+    AdditionalDependencies extends ConstructorParameters<Class>,
+    Tokens extends Class["dependencies"],
+    Service extends ConstructorReturnType<Class>,
+    Token extends TokenType,
+  >(
+    token: Token,
+    getClass: () => Class
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof Services
+    >
+  >;
+
+  providesClass(
+    token: TokenType,
+    clsOrProvider:
+      | InjectableClass<any, any, readonly TokenType[]>
+      | (() => InjectableClass<any, any, readonly TokenType[]>)
+  ): PartialContainer<any, any> {
+    return this.provides(ClassInjectable(token, clsOrProvider as any));
   }
 
   /**

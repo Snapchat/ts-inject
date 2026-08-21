@@ -1,4 +1,16 @@
+import { memoize } from "./memoize";
 import type { InjectableClass, InjectableFunction, ServicesFromTokenizedParams, TokenType } from "./types";
+
+type AnyInjectableClass = InjectableClass<any, any, readonly TokenType[]>;
+type AnyClassProvider = () => AnyInjectableClass;
+
+/** @internal */
+export function isClassProvider(
+  clsOrProvider: AnyInjectableClass | AnyClassProvider
+): clsOrProvider is AnyClassProvider {
+  // InjectableClass requires a static `dependencies` property. A zero-argument provider does not have one.
+  return !("dependencies" in clsOrProvider);
+}
 
 /** Sentinel type used to produce readable compiler errors when factory param count doesn't match deps. */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
@@ -170,14 +182,53 @@ export function ClassInjectable<
   cls: Class
 ): InjectableFunction<ServicesFromTokenizedParams<Tokens, Dependencies>, Tokens, Token, ConstructorReturnType<Class>>;
 
+/**
+ * Creates a reusable class Injectable whose class lookup is deferred until the Service is first resolved.
+ * The provider and the constructor it returns are memoized independently from the Service, so dependency metadata
+ * and construction always use the same class.
+ *
+ * @example
+ * ```ts
+ * const injectable = ClassInjectable("logger", () => Logger);
+ * const container = Container.providesValue("config", config).provides(injectable);
+ * ```
+ *
+ * @param token Token identifying the Service.
+ * @param getClass Zero-argument function returning the InjectableClass to instantiate.
+ */
+export function ClassInjectable<
+  Class extends InjectableClass<any, any, any>,
+  Dependencies extends ConstructorParameters<Class>,
+  Token extends TokenType,
+  Tokens extends Class["dependencies"],
+>(
+  token: Token,
+  getClass: () => Class
+): InjectableFunction<ServicesFromTokenizedParams<Tokens, Dependencies>, Tokens, Token, ConstructorReturnType<Class>>;
+
 export function ClassInjectable(
   token: TokenType,
-  cls: InjectableClass<any, any, readonly TokenType[]>
+  clsOrProvider: AnyInjectableClass | AnyClassProvider
 ): InjectableFunction<any, readonly TokenType[], TokenType, any> {
-  const factory = (...args: any[]) => new cls(...args);
+  if (!isClassProvider(clsOrProvider)) {
+    // Preserve the eager form exactly: read dependency metadata during ClassInjectable creation.
+    const factory = (...args: any[]) => new clsOrProvider(...args);
+    factory.token = token;
+    factory.dependencies = clsOrProvider.dependencies;
+    return factory;
+  }
+
+  // `memoize` caches successful returns (including undefined) and retries throws. Once a constructor has been
+  // returned, both the dependency getter and factory use that exact constructor on every subsequent attempt.
+  const getClass = memoize(clsOrProvider);
+  const factory = (...args: any[]) => new (getClass())(...args);
   factory.token = token;
-  factory.dependencies = cls.dependencies;
-  return factory;
+  Object.defineProperty(factory, "dependencies", {
+    configurable: true,
+    enumerable: true,
+    get: () => getClass().dependencies,
+  });
+  return factory as InjectableFunction<any, readonly TokenType[], TokenType, any>;
 }
 
 /**

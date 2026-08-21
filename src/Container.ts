@@ -10,7 +10,7 @@ import type {
   TokenType,
   ValidTokens,
 } from "./types";
-import { ClassInjectable, ConcatInjectable, Injectable } from "./Injectable";
+import { ClassInjectable, ConcatInjectable, Injectable, isClassProvider } from "./Injectable";
 import { chainedForEach, entries } from "./entries";
 
 type MaybeMemoizedFactories<Services> = {
@@ -529,8 +529,34 @@ export class Container<Services = {}> {
   providesClass<Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
     token: Token,
     cls: InjectableClass<Services, Service, Tokens>
-  ): Container<AddService<Services, Token, Service>> {
-    return this.providesService(ClassInjectable(token, cls)) as Container<AddService<Services, Token, Service>>;
+  ): Container<AddService<Services, Token, Service>>;
+
+  /**
+   * Lazily registers a class Service. The class provider is evaluated once, on the first resolution attempt that
+   * reaches it, and the returned constructor is cached.
+   *
+   * @example
+   * ```ts
+   * const container = Container
+   *   .providesValue("config", config)
+   *   .providesClass("service", () => Service);
+   * ```
+   *
+   * @param token A unique Token used to identify and retrieve the service from the container.
+   * @param getClass A zero-argument function returning the class to instantiate.
+   */
+  providesClass<Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
+    token: Token,
+    getClass: () => InjectableClass<Services, Service, Tokens>
+  ): Container<AddService<Services, Token, Service>>;
+
+  providesClass(
+    token: TokenType,
+    clsOrProvider:
+      | InjectableClass<any, any, readonly TokenType[]>
+      | (() => InjectableClass<any, any, readonly TokenType[]>)
+  ): Container<any> {
+    return this.providesService(ClassInjectable(token, clsOrProvider as any) as any);
   }
 
   /**
@@ -592,9 +618,38 @@ export class Container<Services = {}> {
     Token extends keyof Services,
     Tokens extends readonly ValidTokens<Services>[],
     Service extends ArrayElement<Services[Token]>,
-  >(token: Token, cls: InjectableClass<Services, Service, Tokens>): Container<Services> {
+  >(token: Token, cls: InjectableClass<Services, Service, Tokens>): Container<Services>;
+
+  /**
+   * Lazily appends an injectable class instance to an existing array Service.
+   *
+   * @example
+   * ```ts
+   * const container = Container.fromObject({ services: [] as Service[] });
+   * const newContainer = container.appendClass('services', () => Service);
+   * ```
+   *
+   * @param token A Token corresponding to an existing array Service.
+   * @param getClass A zero-argument function returning the class to instantiate.
+   */
+  appendClass<
+    Token extends keyof Services,
+    Tokens extends readonly ValidTokens<Services>[],
+    Service extends ArrayElement<Services[Token]>,
+  >(token: Token, getClass: () => InjectableClass<Services, Service, Tokens>): Container<Services>;
+
+  appendClass(
+    token: keyof Services,
+    clsOrProvider:
+      | InjectableClass<any, any, readonly TokenType[]>
+      | (() => InjectableClass<any, any, readonly TokenType[]>)
+  ): Container<Services> {
+    // appendClass builds the inner class registration when the array is resolved. Normalize both forms lazily so the
+    // eager form keeps its existing metadata-read timing, while a successfully returned lazy constructor remains
+    // cached even if dependency resolution or construction later throws.
+    const getClass = memoize(() => (isClassProvider(clsOrProvider) ? clsOrProvider() : clsOrProvider));
     return this.providesService(
-      ConcatInjectable(token, () => this.providesClass(token, cls).get(token))
+      ConcatInjectable(token as TokenType, () => this.providesClass(token as any, getClass as any).get(token))
     ) as Container<Services>;
   }
 
@@ -685,13 +740,12 @@ export class Container<Services = {}> {
     Dependencies,
   >(fn: InjectableFunction<Dependencies, Tokens, Token, Service>): Container<AddService<Services, Token, Service>> {
     const token = fn.token;
-    const dependencies: readonly any[] = fn.dependencies;
-    // If the service depends on itself, e.g. in the multi-binding case, where we call append multiple times with
-    // the same token, we always must resolve the dependency using the parent container to avoid infinite loop.
-    const getFromParent = dependencies.indexOf(token) === -1 ? undefined : () => this.get(token as any);
+    const parent = this;
     const factory = memoize(function (this: Container<Services>) {
-      // Safety: getFromParent is defined if the token is in the dependencies list, so it is safe to call it.
-      return fn(...(dependencies.map((t) => (t === token ? getFromParent!() : this.get(t))) as any));
+      // Dependencies are read when the service is first resolved. Capturing the parent preserves the existing
+      // self-dependency behavior while other dependencies continue to resolve from the extended container.
+      const dependencies: readonly any[] = fn.dependencies;
+      return fn(...(dependencies.map((t) => (t === token ? parent.get(token as any) : this.get(t))) as any));
     });
     // Extend `this.factoriesChain` via prototype chain so adding a service is O(1) — a chain
     // of N `provides` calls is O(N) total instead of O(N²).
