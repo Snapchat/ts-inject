@@ -17,10 +17,11 @@ End-to-end speedup at chain depth 8000: **Container** 10,286 ms → ~500 ms (~20
 npm run bench
 ```
 
-Runs two sections back-to-back:
+Runs three sections back-to-back:
 
-1. **Construction + materialization** (`benchmarks/provides-chain.ts`) — Container and PartialContainer chains of 50 → 8000 services, `ms/build`, plus an 800-deep lookup probe and `Container.provides(partial)` materialization cost across the same range.
-2. **Read-path** (`benchmarks/get-pass.ts`) — single container, full key sweep in a hot loop at 50 → 1600. This is what surfaced the Hermes regression.
+1. **Lazy class registration** (`benchmarks/lazy-class.ts`) — eager and lazy class chains of 10, 100, and 1,000 services, using both a simulated cache-on-first-read export loader and already-loaded class references. See [LAZY_CLASS_RESULTS.md](LAZY_CLASS_RESULTS.md).
+2. **Construction + materialization** (`benchmarks/provides-chain.ts`) — Container and PartialContainer chains of 50 → 8000 services, `ms/build`, plus an 800-deep lookup probe and `Container.provides(partial)` materialization cost across the same range.
+3. **Read-path** (`benchmarks/get-pass.ts`) — single container, full key sweep in a hot loop at 50 → 1600. This is what surfaced the Hermes regression.
 
 ## Numbers
 

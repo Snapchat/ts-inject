@@ -58,6 +58,23 @@ const db = container.get("Database");
 db.save("user1"); // Log: Saving record: user1
 ```
 
+#### Lazy Class Lookup
+
+`providesClass` accepts both lazy and eager class registration:
+
+```ts
+container.providesClass("Database", () => Database); // class lookup occurs on first resolution
+container.providesClass("Database", Database); // dependency metadata is read during registration
+```
+
+The thunk form defers class lookup through `Container` and `PartialContainer` registration and composition until the
+service is first resolved. `appendClass("plugins", () => Plugin)` supports the same form.
+
+This is especially useful with cache-on-first-read module namespaces, where reading an export can trigger module
+evaluation. Ordinary static ESM imports are different: native ESM evaluates imported modules before the importing
+module runs, so wrapping an already imported binding in `() => Database` cannot defer native ESM module evaluation by
+itself. It only defers the class lookup performed by `ts-inject`.
+
 #### Inline Factory Functions
 
 When a service needs custom creation logic, pass a factory function directly to `provides`:
@@ -74,7 +91,9 @@ const appContainer = container
   .provides("httpClient", ["apiUrl"] as const, (url: string) => createHttpClient(url));
 ```
 
-For most services, prefer `providesValue` (eager values), `providesClass` (classes with `static dependencies`), or the inline `provides` form above. The `Injectable()` helper is only needed when you need a reusable factory object — for example, to pass to `run()` for eager initialization.
+For most services, use `providesValue` (eager values), `providesClass` (classes with `static dependencies`), or the
+inline `provides` form above. The `Injectable()` helper is only needed when you need a reusable factory object — for
+example, to pass to `run()` for eager initialization.
 
 #### Composable Containers
 
