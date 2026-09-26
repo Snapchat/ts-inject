@@ -145,12 +145,12 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param fn An InjectableFunction, taking dependencies as arguments, which returns the Service.
    */
   provides<
-    S,
-    D,
     AdditionalDependencies extends readonly any[],
     Tokens extends readonly TokenType[],
     Token extends TokenType,
     Service,
+    S = Services,
+    D = Dependencies,
   >(
     this: PartialContainer<S, D>,
     fn: PartialInjectableFunction<AdditionalDependencies, Tokens, Token, Service>
@@ -177,7 +177,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param token A unique Token identifying the service.
    * @param fn A zero-argument factory function that creates the service.
    */
-  provides<S, D, Token extends TokenType, Service>(
+  provides<Token extends TokenType, Service, S = Services, D = Dependencies>(
     this: PartialContainer<S, D>,
     token: Token,
     fn: () => Service
@@ -202,12 +202,12 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param fn A factory function whose parameters match the dependencies.
    */
   provides<
-    S,
-    D,
     Token extends TokenType,
     const Tokens extends readonly TokenType[],
     Params extends readonly any[],
     Service,
+    S = Services,
+    D = Dependencies,
   >(
     this: PartialContainer<S, D>,
     token: Token,
@@ -235,7 +235,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    *
    * @param container The PartialContainer whose services will be merged.
    */
-  provides<S, D, AdditionalServices, AdditionalDependencies>(
+  provides<AdditionalServices, AdditionalDependencies, S = Services, D = Dependencies>(
     this: PartialContainer<S, D>,
     container: PartialContainer<AdditionalServices, AdditionalDependencies>
   ): PartialContainer<
@@ -258,7 +258,7 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    *
    * @param container The Container whose services will be merged.
    */
-  provides<S, D, AdditionalServices>(
+  provides<AdditionalServices, S = Services, D = Dependencies>(
     this: PartialContainer<S, D>,
     container: Container<AdditionalServices>
   ): PartialContainer<AddServices<S, AdditionalServices>, ExcludeKey<D, keyof AdditionalServices>>;
@@ -325,7 +325,11 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param token the Token by which the value will be known.
    * @param value the value to be provided.
    */
-  providesValue<S, D, Token extends TokenType, Service>(this: PartialContainer<S, D>, token: Token, value: Service) {
+  providesValue<Token extends TokenType, Service, S = Services, D = Dependencies>(
+    this: PartialContainer<S, D>,
+    token: Token,
+    value: Service
+  ) {
     return this.provides(Injectable(token, [], () => value));
   }
 
@@ -349,13 +353,13 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param cls the class to be provided, must match the InjectableClass type.
    */
   providesClass<
-    S,
-    D,
     Class extends InjectableClass<any, any, any>,
     AdditionalDependencies extends ConstructorParameters<Class>,
     Tokens extends Class["dependencies"],
     Service extends ConstructorReturnType<Class>,
     Token extends TokenType,
+    S = Services,
+    D = Dependencies,
   >(
     this: PartialContainer<S, D>,
     token: Token,
@@ -380,13 +384,13 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param getClass a zero-argument function returning the class to instantiate.
    */
   providesClass<
-    S,
-    D,
     Class extends InjectableClass<any, any, any>,
     AdditionalDependencies extends ConstructorParameters<Class>,
     Tokens extends Class["dependencies"],
     Service extends ConstructorReturnType<Class>,
     Token extends TokenType,
+    S = Services,
+    D = Dependencies,
   >(
     this: PartialContainer<S, D>,
     token: Token,

@@ -250,3 +250,21 @@ describe("AddServices", () => {
     expect([first, last]).toEqual([0, 59]);
   });
 });
+
+describe("explicit type arguments", () => {
+  test("callers can still widen a service type at registration", () => {
+    const widened = Container.providesValue("a", 1)
+      .providesValue<"b", number | undefined>("b", 1)
+      .provides<"c", string | null>("c", () => "x");
+    const a: number = widened.get<"a">("a");
+    const b: number | undefined = widened.get("b");
+    const c: string | null = widened.get("c");
+    // @ts-expect-error "b" was registered as number | undefined
+    const narrowed: number = widened.get("b");
+
+    const partial = PartialContainer.fromObject({}).providesValue<"p", string | null>("p", "x");
+    const p: string | null = Container.provides(partial).get("p");
+
+    expect([a, b, c, p]).toEqual([1, 1, "x", "x"]);
+  });
+});

@@ -200,11 +200,12 @@ export class Container<Services = {}> {
     return this.flatFactories ?? (this.flatFactories = this.buildFlatFactories());
   }
 
-  // Instance methods take `this: Container<S>` and use the method-level `S` in place of the class's `Services`.
-  // With the class type parameter, TypeScript instantiates a call's return type twice (once with the class's type
-  // arguments, once with the call's), and the second pass re-walks every `AddService` layer whenever a service type
-  // is an anonymous object-literal or function type. Inferring `S` from `this` makes it a single pass, so long
-  // registration chains stay within TypeScript's instantiation depth limit. See
+  // Generic instance methods take `this: Container<S>` and use the method-level `S` in place of the class's
+  // `Services`. With the class type parameter, TypeScript instantiates a call's return type twice (once with the
+  // class's type arguments, once with the call's), and the second pass re-walks every `AddService` layer whenever a
+  // service type is an anonymous object-literal or function type. Inferring `S` from `this` makes it a single pass,
+  // so long registration chains stay within TypeScript's instantiation depth limit. `S` comes last and defaults to
+  // `Services` so callers that pass explicit type arguments keep the previous behaviour. See
   // https://github.com/Snapchat/ts-inject/issues/27.
   constructor(factories: MaybeMemoizedFactories<Services>) {
     // Public construction path. Flatten the input — own + inherited — into a clean
@@ -251,7 +252,7 @@ export class Container<Services = {}> {
    * @returns A new Container copy that shares the original's services, with specified services scoped as unique
    * instances to the new Container.
    */
-  copy<S, Tokens extends readonly (keyof S)[]>(this: Container<S>, scopedServices?: Tokens): Container<S> {
+  copy<Tokens extends readonly (keyof S)[], S = Services>(this: Container<S>, scopedServices?: Tokens): Container<S> {
     if (!scopedServices || scopedServices.length === 0) {
       // Share factories via prototype chain — the new container resolves to the same memoized
       // instances as the original.
@@ -272,7 +273,7 @@ export class Container<Services = {}> {
    * @param token The {@link CONTAINER} token.
    * @returns This Container.
    */
-  get<S>(this: Container<S>, token: ContainerToken): Container<S>;
+  get(token: ContainerToken): this;
 
   /**
    * Retrieves a Service from the Container by its token.
@@ -282,9 +283,9 @@ export class Container<Services = {}> {
    * @param token A unique token corresponding to a Service
    * @returns A Service corresponding to the given Token.
    */
-  get<S, Token extends keyof S>(this: Container<S>, token: Token): S[Token];
+  get<Token extends keyof S, S = Services>(this: Container<S>, token: Token): S[Token];
 
-  get(token: ContainerToken | keyof Services): Container<Services> | Services[keyof Services] {
+  get(token: ContainerToken | keyof Services): this | Services[keyof Services] {
     if (token === CONTAINER) return this;
     // Materialize a flat own-property snapshot of `factories` on first read so subsequent
     // lookups don't pay the prototype-chain walk cost. Once built, the snapshot is reused
@@ -380,7 +381,7 @@ export class Container<Services = {}> {
    * @returns The current container unchanged, with dependencies of the provided {@link InjectableFunction}
    * initialized as needed.
    */
-  run<S, Token extends TokenType, Tokens extends readonly ValidTokens<S>[], Service>(
+  run<Token extends TokenType, Tokens extends readonly ValidTokens<S>[], Service, S = Services>(
     this: Container<S>,
     fn: InjectableFunction<S, Tokens, Token, Service>
   ): Container<S>;
@@ -435,7 +436,7 @@ export class Container<Services = {}> {
    * @returns A new `Container` instance that combines services from this container with those from the
    *          provided container, with services from the provided container taking precedence in case of conflicts.
    */
-  provides<S, AdditionalServices>(
+  provides<AdditionalServices, S = Services>(
     this: Container<S>,
     container: Container<AdditionalServices>
   ): Container<AddServices<S, AdditionalServices>>;
@@ -450,7 +451,7 @@ export class Container<Services = {}> {
    * @param fn The `InjectableFunction` that constructs the service.
    * @returns A new `Container` instance containing the added service, allowing chaining of multiple `provides` calls.
    */
-  provides<S, Token extends TokenType, Tokens extends readonly ValidTokens<S>[], Service>(
+  provides<Token extends TokenType, Tokens extends readonly ValidTokens<S>[], Service, S = Services>(
     this: Container<S>,
     fn: InjectableFunction<S, Tokens, Token, Service>
   ): Container<AddService<S, Token, Service>>;
@@ -470,7 +471,7 @@ export class Container<Services = {}> {
    * @param fn A zero-argument factory function that creates the service.
    * @returns A new Container with the service registered.
    */
-  provides<S, Token extends TokenType, Service>(
+  provides<Token extends TokenType, Service, S = Services>(
     this: Container<S>,
     token: Token,
     fn: () => Service
@@ -492,7 +493,7 @@ export class Container<Services = {}> {
    * @param fn A factory function whose parameters match the resolved dependency types.
    * @returns A new Container with the service registered.
    */
-  provides<S, Token extends TokenType, const Tokens extends readonly ValidTokens<S>[], Service>(
+  provides<Token extends TokenType, const Tokens extends readonly ValidTokens<S>[], Service, S = Services>(
     this: Container<S>,
     token: Token,
     dependencies: Tokens,
@@ -535,7 +536,7 @@ export class Container<Services = {}> {
    *            specifying these dependencies.
    * @returns A new Container instance containing the newly created service, allowing for method chaining.
    */
-  providesClass<S, Token extends TokenType, Service, Tokens extends readonly ValidTokens<S>[]>(
+  providesClass<Token extends TokenType, Service, Tokens extends readonly ValidTokens<S>[], S = Services>(
     this: Container<S>,
     token: Token,
     cls: InjectableClass<S, Service, Tokens>
@@ -555,7 +556,7 @@ export class Container<Services = {}> {
    * @param token A unique Token used to identify and retrieve the service from the container.
    * @param getClass A zero-argument function returning the class to instantiate.
    */
-  providesClass<S, Token extends TokenType, Service, Tokens extends readonly ValidTokens<S>[]>(
+  providesClass<Token extends TokenType, Service, Tokens extends readonly ValidTokens<S>[], S = Services>(
     this: Container<S>,
     token: Token,
     getClass: () => InjectableClass<S, Service, Tokens>
@@ -580,7 +581,7 @@ export class Container<Services = {}> {
    * @returns A new Container instance that includes the provided service, allowing for chaining additional
    *          `provides` calls.
    */
-  providesValue<S, Token extends TokenType, Service>(
+  providesValue<Token extends TokenType, Service, S = Services>(
     this: Container<S>,
     token: Token,
     value: Service
@@ -604,7 +605,7 @@ export class Container<Services = {}> {
    * @param value - A value to append to the array.
    * @returns The updated Container with the appended value in the specified array.
    */
-  appendValue<S, Token extends keyof S, Service extends ArrayElement<S[Token]>>(
+  appendValue<Token extends keyof S, Service extends ArrayElement<S[Token]>, S = Services>(
     this: Container<S>,
     token: Token,
     value: Service
@@ -628,10 +629,10 @@ export class Container<Services = {}> {
    * @returns The updated Container with the new service instance appended to the specified array.
    */
   appendClass<
-    S,
     Token extends keyof S,
     Tokens extends readonly ValidTokens<S>[],
     Service extends ArrayElement<S[Token]>,
+    S = Services,
   >(this: Container<S>, token: Token, cls: InjectableClass<S, Service, Tokens>): Container<S>;
 
   /**
@@ -647,10 +648,10 @@ export class Container<Services = {}> {
    * @param getClass A zero-argument function returning the class to instantiate.
    */
   appendClass<
-    S,
     Token extends keyof S,
     Tokens extends readonly ValidTokens<S>[],
     Service extends ArrayElement<S[Token]>,
+    S = Services,
   >(this: Container<S>, token: Token, getClass: () => InjectableClass<S, Service, Tokens>): Container<S>;
 
   appendClass(
@@ -681,7 +682,7 @@ export class Container<Services = {}> {
    * @param fn A zero-argument factory function that returns the service to append.
    * @returns The updated Container with the new service instance appended.
    */
-  append<S, Token extends keyof S, Service extends ArrayElement<S[Token]>>(
+  append<Token extends keyof S, Service extends ArrayElement<S[Token]>, S = Services>(
     this: Container<S>,
     token: Token,
     fn: () => Service
@@ -705,10 +706,10 @@ export class Container<Services = {}> {
    * @returns The updated Container with the new service instance appended.
    */
   append<
-    S,
     Token extends keyof S,
     const Tokens extends readonly ValidTokens<S>[],
     Service extends ArrayElement<S[Token]>,
+    S = Services,
   >(
     this: Container<S>,
     token: Token,
@@ -724,10 +725,12 @@ export class Container<Services = {}> {
    * @param fn - An injectable function that returns the Service.
    * @returns The updated Container with the new service instance appended.
    */
-  append<S, Token extends keyof S, Tokens extends readonly ValidTokens<S>[], Service extends ArrayElement<S[Token]>>(
-    this: Container<S>,
-    fn: InjectableFunction<S, Tokens, Token, Service>
-  ): Container<S>;
+  append<
+    Token extends keyof S,
+    Tokens extends readonly ValidTokens<S>[],
+    Service extends ArrayElement<S[Token]>,
+    S = Services,
+  >(this: Container<S>, fn: InjectableFunction<S, Tokens, Token, Service>): Container<S>;
 
   append(first: any, second?: any, third?: any): Container<Services> {
     let token: any;
