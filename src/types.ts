@@ -108,37 +108,42 @@ export type ServicesFromInjectables<Injectables extends readonly AnyInjectable[]
 /**
  * Add a Service with a Token to an existing set of Services.
  */
-// The conditional type does two jobs. It forces TS language services to evaluate the type, so type hints show the
+// The outer conditional keeps the alias distributive over union Services (each member gets the new token). The inner
+// one does two jobs. It forces TS language services to evaluate the type, so type hints show the
 // mapped type instead of the AddService alias. And indexing `ParentServices[keyof ParentServices]` in the check type
 // makes TS resolve every property of the parent eagerly. Without that, each layer's properties are resolved lazily
 // through the layer below, so a chain of ~50 registrations exceeds TS's instantiation depth limit (TS2589) the first
 // time a service is read. See https://github.com/Snapchat/ts-inject/issues/27.
-export type AddService<ParentServices, Token extends TokenType, Service> = [
-  ParentServices[keyof ParentServices],
-] extends [unknown]
-  ? // A mapped type produces better, more concise type hints than an intersection type.
-    {
-      [K in keyof ParentServices | Token]: K extends keyof ParentServices
-        ? K extends Token
-          ? Service
-          : ParentServices[K]
-        : Service;
-    }
+export type AddService<ParentServices, Token extends TokenType, Service> = ParentServices extends unknown
+  ? [ParentServices[keyof ParentServices]] extends [unknown]
+    ? // A mapped type produces better, more concise type hints than an intersection type.
+      {
+        [K in keyof ParentServices | Token]: K extends keyof ParentServices
+          ? K extends Token
+            ? Service
+            : ParentServices[K]
+          : Service;
+      }
+    : never
   : never;
 
 /**
  * Same as AddService above, but is merging multiple services at once. Services types override those of the parent.
  */
 // See AddService for why the check types index into the parent and incoming services.
-export type AddServices<ParentServices, Services> = [ParentServices[keyof ParentServices]] extends [unknown]
-  ? [Services[keyof Services]] extends [unknown]
-    ? {
-        [K in keyof Services | keyof ParentServices]: K extends keyof Services
-          ? Services[K]
-          : K extends keyof ParentServices
-            ? ParentServices[K]
-            : never;
-      }
+export type AddServices<ParentServices, Services> = ParentServices extends unknown
+  ? Services extends unknown
+    ? [ParentServices[keyof ParentServices]] extends [unknown]
+      ? [Services[keyof Services]] extends [unknown]
+        ? {
+            [K in keyof Services | keyof ParentServices]: K extends keyof Services
+              ? Services[K]
+              : K extends keyof ParentServices
+                ? ParentServices[K]
+                : never;
+          }
+        : never
+      : never
     : never
   : never;
 

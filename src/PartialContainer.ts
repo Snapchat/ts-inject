@@ -17,25 +17,31 @@ import { ClassInjectable, Injectable } from "./Injectable";
 // The check types index into the operands for the same reason as `AddService` in types.ts: every `provides()` wraps
 // the previous Dependencies in these aliases, and without eager resolution a long chain exceeds TypeScript's
 // instantiation depth limit when the dependencies are finally compared against a Container.
-type AddDependencies<ParentDependencies, Dependencies> = [ParentDependencies[keyof ParentDependencies]] extends [
-  unknown,
-]
-  ? [Dependencies[keyof Dependencies]] extends [unknown]
-    ? // A mapped type produces better, more concise type hints than an intersection type.
-      {
-        [K in keyof ParentDependencies | keyof Dependencies]: K extends keyof ParentDependencies
-          ? K extends keyof Dependencies
-            ? // Both sides depend on this token: the provided service must satisfy both.
-              ParentDependencies[K] & Dependencies[K]
-            : ParentDependencies[K]
-          : K extends keyof Dependencies
-            ? Dependencies[K]
-            : never;
-      }
+type AddDependencies<ParentDependencies, Dependencies> = ParentDependencies extends unknown
+  ? Dependencies extends unknown
+    ? [ParentDependencies[keyof ParentDependencies]] extends [unknown]
+      ? [Dependencies[keyof Dependencies]] extends [unknown]
+        ? // A mapped type produces better, more concise type hints than an intersection type.
+          {
+            [K in keyof ParentDependencies | keyof Dependencies]: K extends keyof ParentDependencies
+              ? K extends keyof Dependencies
+                ? // Both sides depend on this token: the provided service must satisfy both.
+                  ParentDependencies[K] & Dependencies[K]
+                : ParentDependencies[K]
+              : K extends keyof Dependencies
+                ? Dependencies[K]
+                : never;
+          }
+        : never
+      : never
     : never
   : never;
 
-type ExcludeKey<T, U> = [T[keyof T]] extends [unknown] ? { [K in Exclude<keyof T, U>]: T[K] } : never;
+type ExcludeKey<T, U> = T extends unknown
+  ? [T[keyof T]] extends [unknown]
+    ? { [K in Exclude<keyof T, U>]: T[K] }
+    : never
+  : never;
 
 type PartialInjectableFunction<
   Params extends readonly any[],
