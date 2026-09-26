@@ -193,6 +193,33 @@ describe("PartialContainer", () => {
       // succeeds when dependency is provided
       Container.providesValue("dep", "hello").provides(partial);
     });
+
+    test("checks every expected type when several services depend on the same token", () => {
+      const partial = new PartialContainer({})
+        .provides("Length", ["dep"] as const, (dep: string) => dep.length)
+        .provides("Doubled", ["dep"] as const, (dep: number) => dep * 2);
+      // @ts-expect-error "Doubled" expects a number, but "dep" is provided as a string
+      Container.providesValue("dep", "hello").provides(partial);
+      // @ts-expect-error "Length" expects a string, but "dep" is provided as a number
+      Container.providesValue("dep", 2).provides(partial);
+    });
+
+    test("accepts several services depending on the same token with the same type", () => {
+      const partial = new PartialContainer({})
+        .provides("Upper", ["dep"] as const, (dep: string) => dep.toUpperCase())
+        .provides("Length", ["dep"] as const, (dep: string) => dep.length);
+      const combined = Container.providesValue("dep", "hello").provides(partial);
+      expect(combined.get("Upper")).toBe("HELLO");
+      expect(combined.get("Length")).toBe(5);
+    });
+
+    test("checks every expected type when merged PartialContainers depend on the same token", () => {
+      const strings = new PartialContainer({}).provides("Length", ["dep"] as const, (dep: string) => dep.length);
+      const numbers = new PartialContainer({}).provides("Doubled", ["dep"] as const, (dep: number) => dep * 2);
+      const merged = strings.provides(numbers);
+      // @ts-expect-error "Doubled" expects a number, but "dep" is provided as a string
+      Container.providesValue("dep", "hello").provides(merged);
+    });
   });
 
   test("type error targets factory when arity doesn't match deps", () => {

@@ -20,7 +20,10 @@ type AddDependencies<ParentDependencies, Dependencies> = ParentDependencies exte
   ? // A mapped type produces better, more concise type hints than an intersection type.
     {
       [K in keyof ParentDependencies | keyof Dependencies]: K extends keyof ParentDependencies
-        ? ParentDependencies[K]
+        ? K extends keyof Dependencies
+          ? // Both sides depend on this token: the provided service must satisfy both.
+            ParentDependencies[K] & Dependencies[K]
+          : ParentDependencies[K]
         : K extends keyof Dependencies
           ? Dependencies[K]
           : never;
