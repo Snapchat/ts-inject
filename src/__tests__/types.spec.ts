@@ -228,6 +228,77 @@ describe("AddService", () => {
 
     expect([first, last, sum]).toEqual([0, 119, 119]);
   });
+
+  // The type-level Chain helper above skips the method-call path, so this compiles the issue's literal repro
+  // shape as well. Below ~50 registrations the old types passed, so 60 keeps a margin above the old limit.
+  test("a literal Container.fromObject({}) chain of 60 registrations compiles and reads back", () => {
+    const container = Container.fromObject({})
+      .providesValue("s0", 0)
+      .providesValue("s1", 1)
+      .providesValue("s2", 2)
+      .providesValue("s3", 3)
+      .providesValue("s4", 4)
+      .providesValue("s5", 5)
+      .providesValue("s6", 6)
+      .providesValue("s7", 7)
+      .providesValue("s8", 8)
+      .providesValue("s9", 9)
+      .providesValue("s10", 10)
+      .providesValue("s11", 11)
+      .providesValue("s12", 12)
+      .providesValue("s13", 13)
+      .providesValue("s14", 14)
+      .providesValue("s15", 15)
+      .providesValue("s16", 16)
+      .providesValue("s17", 17)
+      .providesValue("s18", 18)
+      .providesValue("s19", 19)
+      .providesValue("s20", 20)
+      .providesValue("s21", 21)
+      .providesValue("s22", 22)
+      .providesValue("s23", 23)
+      .providesValue("s24", 24)
+      .providesValue("s25", 25)
+      .providesValue("s26", 26)
+      .providesValue("s27", 27)
+      .providesValue("s28", 28)
+      .providesValue("s29", 29)
+      .providesValue("s30", 30)
+      .providesValue("s31", 31)
+      .providesValue("s32", 32)
+      .providesValue("s33", 33)
+      .providesValue("s34", 34)
+      .providesValue("s35", 35)
+      .providesValue("s36", 36)
+      .providesValue("s37", 37)
+      .providesValue("s38", 38)
+      .providesValue("s39", 39)
+      .providesValue("s40", 40)
+      .providesValue("s41", 41)
+      .providesValue("s42", 42)
+      .providesValue("s43", 43)
+      .providesValue("s44", 44)
+      .providesValue("s45", 45)
+      .providesValue("s46", 46)
+      .providesValue("s47", 47)
+      .providesValue("s48", 48)
+      .providesValue("s49", 49)
+      .providesValue("s50", 50)
+      .providesValue("s51", 51)
+      .providesValue("s52", 52)
+      .providesValue("s53", 53)
+      .providesValue("s54", 54)
+      .providesValue("s55", 55)
+      .providesValue("s56", 56)
+      .providesValue("s57", 57)
+      .providesValue("s58", 58)
+      .providesValue("s59", 59);
+
+    const first: number = container.get("s0");
+    const last: number = container.get("s59");
+
+    expect([first, last]).toEqual([0, 59]);
+  });
 });
 
 describe("AddServices", () => {
