@@ -1,6 +1,6 @@
 /* eslint-disable max-classes-per-file */
 import { ClassInjectable, Injectable } from "../Injectable";
-import type { ServicesFromInjectables } from "../types";
+import type { AddService, AddServices, ServicesFromInjectables } from "../types";
 import { Container } from "../Container";
 import { PartialContainer } from "../PartialContainer";
 
@@ -201,5 +201,52 @@ describe("lazy class registration types", () => {
     base.provides(invalidLowLevel);
 
     expect(base.get("dependency")).toBeInstanceOf(Dependency);
+  });
+});
+
+// Builds the type a chain of N `providesValue` calls produces, without writing N lines of source.
+type Chain<
+  N extends number,
+  Prefix extends string = "s",
+  Services = {},
+  Acc extends unknown[] = [],
+> = Acc["length"] extends N
+  ? Services
+  : Chain<N, Prefix, AddService<Services, `${Prefix}${Acc["length"]}`, number>, [...Acc, 0]>;
+
+describe("AddService", () => {
+  // https://github.com/Snapchat/ts-inject/issues/27
+  test("reading from a chain of 120 registrations does not exceed TS's instantiation depth limit", () => {
+    let container: Container<{}> = Container.fromObject({});
+    for (let i = 0; i < 120; i++) container = container.providesValue(`s${i}`, i) as Container<{}>;
+    const deep = container as Container<Chain<120>>;
+
+    // Before the fix each of these statements failed with TS2589 "Type instantiation is excessively deep".
+    const first: number = deep.get("s0");
+    const last: number = deep.get("s119");
+    const sum: number = deep.provides("sum", ["s0", "s119"] as const, (a, b) => a + b).get("sum");
+
+    expect([first, last, sum]).toEqual([0, 119, 119]);
+  });
+});
+
+describe("AddServices", () => {
+  test("merging 8 modules of 60 registrations does not exceed TS's instantiation depth limit", () => {
+    type Merged<N extends number, Services = {}, Acc extends unknown[] = []> = Acc["length"] extends N
+      ? Services
+      : Merged<N, AddServices<Services, Chain<60, `m${Acc["length"]}_`>>, [...Acc, 0]>;
+
+    let container: Container<{}> = Container.fromObject({});
+    for (let m = 0; m < 8; m++) {
+      let module: PartialContainer<{}, {}> = PartialContainer.fromObject({});
+      for (let i = 0; i < 60; i++) module = module.providesValue(`m${m}_${i}`, i) as PartialContainer<{}, {}>;
+      container = container.provides(module);
+    }
+    const merged = container as Container<Merged<8>>;
+
+    const first: number = merged.get("m0_0");
+    const last: number = merged.get("m7_59");
+
+    expect([first, last]).toEqual([0, 59]);
   });
 });
