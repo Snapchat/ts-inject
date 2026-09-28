@@ -284,6 +284,9 @@ export class Container<Services = {}> {
    * @returns A Service corresponding to the given Token.
    */
   get<Token extends keyof S, S = Services>(this: Container<S>, token: Token): S[Token];
+  // Without a `this` parameter, so facade types such as `Pick<Container<S>, "get">` and `container.get.bind(container)`
+  // stay callable. A real Container receiver matches the overload above first.
+  get<Token extends keyof Services>(token: Token): Services[Token];
 
   get(token: ContainerToken | keyof Services): this | Services[keyof Services] {
     if (token === CONTAINER) return this;
@@ -351,11 +354,14 @@ export class Container<Services = {}> {
    * @returns The current container unchanged, with dependencies of the services listed
    * in the provided {@link PartialContainer} initialized as needed.
    */
-  run<S extends Dependencies, AdditionalServices, Dependencies>(
+  run<AdditionalServices, Dependencies, S extends Dependencies, This extends Container<any> = Container<S>>(
     // `S extends Dependencies` ensures this Container can provide every Dependency the PartialContainer requires.
-    this: Container<S>,
+    // `This` is the receiver type, so a subclass gets itself back. Returning the polymorphic `this` type instead would
+    // re-walk long anonymous-typed chains (see the class comment). With explicit type arguments it defaults to
+    // Container<S>.
+    this: This & Container<S>,
     container: PartialContainer<AdditionalServices, Dependencies>
-  ): Container<S>;
+  ): This;
 
   /**
    * Runs the factory function for a specified service provided by {@link InjectableFunction},
@@ -381,14 +387,15 @@ export class Container<Services = {}> {
    * @returns The current container unchanged, with dependencies of the provided {@link InjectableFunction}
    * initialized as needed.
    */
-  run<Token extends TokenType, Tokens extends readonly ValidTokens<S>[], Service, S = Services>(
-    this: Container<S>,
-    fn: InjectableFunction<S, Tokens, Token, Service>
-  ): Container<S>;
+  run<
+    Token extends TokenType,
+    Tokens extends readonly ValidTokens<S>[],
+    Service,
+    S = Services,
+    This extends Container<any> = Container<S>,
+  >(this: This & Container<S>, fn: InjectableFunction<S, Tokens, Token, Service>): This;
 
-  run<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service, AdditionalServices>(
-    fnOrContainer: InjectableFunction<Services, Tokens, Token, Service> | PartialContainer<AdditionalServices, Services>
-  ): this {
+  run(fnOrContainer: any): any {
     if (fnOrContainer instanceof PartialContainer) {
       const runnableContainer = this.provides(fnOrContainer);
       for (const token of fnOrContainer.getTokens()) {
@@ -414,7 +421,7 @@ export class Container<Services = {}> {
    * @returns A new `Container` instance that combines the services of this container with those from the provided
    *          `PartialContainer`, with services from the `PartialContainer` taking precedence in case of conflicts.
    */
-  provides<S extends Dependencies, AdditionalServices, Dependencies>(
+  provides<AdditionalServices, Dependencies, S extends Dependencies>(
     // `S extends Dependencies` ensures this Container can provide every Dependency the PartialContainer requires.
     this: Container<S>,
     container: PartialContainer<AdditionalServices, Dependencies>

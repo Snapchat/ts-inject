@@ -268,3 +268,36 @@ describe("explicit type arguments", () => {
     expect([a, b, c, p]).toEqual([1, 1, "x", "x"]);
   });
 });
+
+describe("receiver-typed methods", () => {
+  const partial = new PartialContainer({}).provides("len", ["dep"] as const, (dep: string) => dep.length);
+  const container = Container.providesValue("dep", "abc");
+
+  test("explicit type arguments on provides(partial) and run(partial) keep their original order", () => {
+    const merged = container.provides<{ len: number }, { dep: string }, { dep: string }>(partial);
+    const ran = container.run<{ len: number }, { dep: string }, { dep: string }>(partial);
+    expect(() =>
+      // @ts-expect-error "dep" is not provided
+      Container.providesValue("other", 1).run(partial)
+    ).toThrow();
+    expect([merged.get("len"), ran.get("dep")]).toEqual([3, "abc"]);
+  });
+
+  test("get is callable through a facade type and after bind", () => {
+    const facade: Pick<Container<{ dep: string }>, "get"> = container;
+    const bound = container.get.bind(container);
+    expect([facade.get("dep"), bound("dep")]).toEqual(["abc", "abc"]);
+  });
+
+  test("run returns the receiver's own type", () => {
+    class Tagged extends Container<{ dep: string }> {
+      tag() {
+        return "tagged";
+      }
+    }
+    const tagged = new Tagged({ dep: () => "abc" });
+    const afterPartial: Tagged = tagged.run(partial);
+    const afterFn: Tagged = tagged.run(Injectable("init", ["dep"] as const, (dep: string) => dep.length));
+    expect([afterPartial.tag(), afterFn.tag()]).toEqual(["tagged", "tagged"]);
+  });
+});
