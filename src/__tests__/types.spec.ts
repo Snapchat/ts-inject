@@ -1,7 +1,8 @@
 /* eslint-disable max-classes-per-file */
 import { ClassInjectable, Injectable } from "../Injectable";
 import type { AddService, AddServices, ServicesFromInjectables } from "../types";
-import { Container } from "../Container";
+import { CONTAINER, Container } from "../Container";
+import type { ContainerToken } from "../Container";
 import { PartialContainer } from "../PartialContainer";
 
 describe("ServicesFromInjectables", () => {
@@ -299,5 +300,13 @@ describe("receiver-typed methods", () => {
     const afterPartial: Tagged = tagged.run(partial);
     const afterFn: Tagged = tagged.run(Injectable("init", ["dep"] as const, (dep: string) => dep.length));
     expect([afterPartial.tag(), afterFn.tag()]).toEqual(["tagged", "tagged"]);
+  });
+});
+
+describe("container token", () => {
+  test("the token spelled out in InjectableFunction and InjectableClass matches CONTAINER", () => {
+    const spelledOut: ContainerToken = "$container";
+    const constant: "$container" = CONTAINER;
+    expect(spelledOut).toBe(constant);
   });
 });

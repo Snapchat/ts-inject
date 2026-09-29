@@ -36,12 +36,16 @@ export type CorrespondingServices<Services, Tokens extends readonly ValidTokens<
  * A `InjectableFunction` also includes its own key Token and dependency Tokens as metadata, so it may be resolved by
  * Container<Services> later.
  */
-export type InjectableFunction<
-  Services,
-  Tokens,
-  Token extends TokenType,
-  Service,
-> = Tokens extends readonly ValidTokens<Services>[]
+// `"$container" | keyof Services` is spelled out instead of `ValidTokens<Services>` on purpose. Inside a type alias,
+// TypeScript defers an array type whose element resolves through another alias, and re-instantiates it together with
+// the alias's outer type arguments every time this conditional is evaluated. When Services is a long chain that
+// contains an anonymous object-literal or function type, that re-walks every layer and exceeds the instantiation depth
+// limit (see AddService). With a literal element type the array is resolved once. Kept in sync with CONTAINER by a
+// test in types.spec.ts.
+export type InjectableFunction<Services, Tokens, Token extends TokenType, Service> = Tokens extends readonly (
+  | "$container"
+  | keyof Services
+)[]
   ? {
       (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
       token: Token;
@@ -54,7 +58,8 @@ export type InjectableFunction<
  * The `InjectableClass` type ensures that the class's dependencies and constructor signature align with
  * the services available in the container, providing strong type safety.
  */
-export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly ValidTokens<Services>[]
+// See InjectableFunction for why the element type is spelled out.
+export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly ("$container" | keyof Services)[]
   ? {
       readonly dependencies: Tokens;
       new (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
