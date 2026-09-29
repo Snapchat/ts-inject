@@ -207,7 +207,7 @@ export class Container<Services = {}> {
   // so long registration chains stay within TypeScript's instantiation depth limit. `S` comes last and defaults to
   // `Services` so callers that pass explicit type arguments keep the previous behaviour, and each method keeps a
   // fallback overload without a `this` parameter so facade types and bound references stay fully typed. A real
-  // receiver matches the `this`-typed overloads first. See https://github.com/Snapchat/ts-inject/issues/27.
+  // receiver matches the `this`-typed overloads first.
   constructor(factories: MaybeMemoizedFactories<Services>) {
     // Public construction path. Flatten the input — own + inherited — into a clean
     // null-prototype-rooted own-property map, memoizing any non-memoized factories along

@@ -9,7 +9,6 @@ import { PartialContainer } from "../PartialContainer";
 // The chains that start from fromObject({}) stop at 80. Up to TypeScript 5.8, overload resolution re-instantiates
 // inferred type arguments, and a chain that starts from an object-literal type still fails at ~100 there.
 // TypeScript 5.9 compiles 400.
-// https://github.com/Snapchat/ts-inject/issues/27
 describe("deep literal registration chains", () => {
   test("120 providesValue calls with primitive values", () => {
     const container = Container.providesValue("s0", 0)

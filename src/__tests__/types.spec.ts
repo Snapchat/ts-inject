@@ -216,7 +216,6 @@ type Chain<
   : Chain<N, Prefix, AddService<Services, `${Prefix}${Acc["length"]}`, number>, [...Acc, 0]>;
 
 describe("AddService", () => {
-  // https://github.com/Snapchat/ts-inject/issues/27
   test("reading from a chain of 120 registrations does not exceed TS's instantiation depth limit", () => {
     let container: Container<{}> = Container.fromObject({});
     for (let i = 0; i < 120; i++) container = container.providesValue(`s${i}`, i) as Container<{}>;

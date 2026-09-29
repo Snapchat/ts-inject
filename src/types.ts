@@ -118,7 +118,7 @@ export type ServicesFromInjectables<Injectables extends readonly AnyInjectable[]
 // mapped type instead of the AddService alias. And indexing `ParentServices[keyof ParentServices]` in the check type
 // makes TS resolve every property of the parent eagerly. Without that, each layer's properties are resolved lazily
 // through the layer below, so a chain of ~50 registrations exceeds TS's instantiation depth limit (TS2589) the first
-// time a service is read. See https://github.com/Snapchat/ts-inject/issues/27.
+// time a service is read.
 export type AddService<ParentServices, Token extends TokenType, Service> = ParentServices extends unknown
   ? [ParentServices[keyof ParentServices]] extends [unknown]
     ? // A mapped type produces better, more concise type hints than an intersection type.
