@@ -275,13 +275,15 @@ describe("receiver-typed methods", () => {
   const container = Container.providesValue("dep", "abc");
 
   test("explicit type arguments on provides(partial) and run(partial) keep their original order", () => {
-    const merged = container.provides<{ len: number }, { dep: string }, { dep: string }>(partial);
-    const ran = container.run<{ len: number }, { dep: string }, { dep: string }>(partial);
+    const withExtra = container.providesValue("extra", 1);
+    const merged = withExtra.provides<{ len: number }, { dep: string }, { dep: string }>(partial);
+    const ran = withExtra.run<{ len: number }, { dep: string }, { dep: string }>(partial);
     expect(() =>
       // @ts-expect-error "dep" is not provided
       Container.providesValue("other", 1).run(partial)
     ).toThrow();
-    expect([merged.get("len"), ran.get("dep")]).toEqual([3, "abc"]);
+    // The receiver's other services survive explicit type arguments.
+    expect([merged.get("len"), merged.get("extra"), ran.get("dep"), ran.get("extra")]).toEqual([3, 1, "abc", 1]);
   });
 
   test("get is callable through a facade type and after bind", () => {
@@ -297,9 +299,17 @@ describe("receiver-typed methods", () => {
       }
     }
     const tagged = new Tagged({ dep: () => "abc" });
+    const init = Injectable("init", ["dep"] as const, (dep: string) => dep.length);
     const afterPartial: Tagged = tagged.run(partial);
-    const afterFn: Tagged = tagged.run(Injectable("init", ["dep"] as const, (dep: string) => dep.length));
-    expect([afterPartial.tag(), afterFn.tag()]).toEqual(["tagged", "tagged"]);
+    const afterFn: Tagged = tagged.run(init);
+    const explicitPartial: Tagged = tagged.run<{ len: number }, { dep: string }, { dep: string }>(partial);
+    const explicitFn: Tagged = tagged.run<"init", readonly ["dep"], number>(init);
+    expect([afterPartial.tag(), afterFn.tag(), explicitPartial.tag(), explicitFn.tag()]).toEqual([
+      "tagged",
+      "tagged",
+      "tagged",
+      "tagged",
+    ]);
   });
 });
 

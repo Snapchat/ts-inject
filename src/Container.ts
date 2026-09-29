@@ -354,11 +354,11 @@ export class Container<Services = {}> {
    * @returns The current container unchanged, with dependencies of the services listed
    * in the provided {@link PartialContainer} initialized as needed.
    */
-  run<AdditionalServices, Dependencies, S extends Dependencies, This extends Container<any> = Container<S>>(
+  run<AdditionalServices, Dependencies, S extends Dependencies, This extends Container<any> = this>(
     // `S extends Dependencies` ensures this Container can provide every Dependency the PartialContainer requires.
-    // `This` is the receiver type, so a subclass gets itself back. Returning the polymorphic `this` type instead would
-    // re-walk long anonymous-typed chains (see the class comment). With explicit type arguments it defaults to
-    // Container<S>.
+    // `This` is the receiver type, so a subclass gets itself back. Returning the polymorphic `this` type directly would
+    // re-walk long anonymous-typed chains (see the class comment); with explicit type arguments `This` defaults to it,
+    // which is the previous return type.
     this: This & Container<S>,
     container: PartialContainer<AdditionalServices, Dependencies>
   ): This;
@@ -392,7 +392,7 @@ export class Container<Services = {}> {
     Tokens extends readonly ValidTokens<S>[],
     Service,
     S = Services,
-    This extends Container<any> = Container<S>,
+    This extends Container<any> = this,
   >(this: This & Container<S>, fn: InjectableFunction<S, Tokens, Token, Service>): This;
 
   run(fnOrContainer: any): any {
@@ -421,9 +421,11 @@ export class Container<Services = {}> {
    * @returns A new `Container` instance that combines the services of this container with those from the provided
    *          `PartialContainer`, with services from the `PartialContainer` taking precedence in case of conflicts.
    */
-  provides<AdditionalServices, Dependencies, S extends Dependencies>(
-    // `S extends Dependencies` ensures this Container can provide every Dependency the PartialContainer requires.
-    this: Container<S>,
+  provides<AdditionalServices, Dependencies, FulfilledDependencies extends Dependencies, S = Services>(
+    // `FulfilledDependencies extends Dependencies` ensures this Container can provide every Dependency the
+    // PartialContainer requires. `S` is the receiver's full service map: inferred from `this`, and defaulting to the
+    // class's Services when callers pass the three original type arguments explicitly.
+    this: Container<S> & Container<FulfilledDependencies>,
     container: PartialContainer<AdditionalServices, Dependencies>
   ): Container<AddServices<S, AdditionalServices>>;
 
