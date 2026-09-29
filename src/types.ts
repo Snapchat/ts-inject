@@ -36,8 +36,9 @@ export type CorrespondingServices<Services, Tokens extends readonly ValidTokens<
  * A `InjectableFunction` also includes its own key Token and dependency Tokens as metadata, so it may be resolved by
  * Container<Services> later.
  */
-// `"$container" | keyof Services` is spelled out instead of `ValidTokens<Services>` on purpose. Inside a type alias,
-// TypeScript defers an array type whose element resolves through another alias, and re-instantiates it together with
+// `"$container" | keyof Services` is spelled out instead of `ValidTokens<Services>` on purpose, and the literal can't
+// be replaced with `typeof CONTAINER` or `ContainerToken` either. Inside a type alias, TypeScript defers an array type
+// whose element has to be looked up (through another alias or a `typeof` query), and re-instantiates it together with
 // the alias's outer type arguments every time this conditional is evaluated. When Services is a long chain that
 // contains an anonymous object-literal or function type, that re-walks every layer and exceeds the instantiation depth
 // limit (see AddService). With a literal element type the array is resolved once. Kept in sync with CONTAINER by a

@@ -326,6 +326,10 @@ describe("receiver-typed methods", () => {
   });
 });
 
+// InjectableFunction and InjectableClass in types.ts spell the container token as the literal "$container" rather than
+// `typeof CONTAINER` or `ContainerToken`, because only a literal lets TypeScript resolve their dependency token arrays
+// once; a looked-up element type makes long chains exceed the instantiation depth limit. This test fails to compile if
+// CONTAINER changes without those literals being updated to match.
 describe("container token", () => {
   test("the token spelled out in InjectableFunction and InjectableClass matches CONTAINER", () => {
     const spelledOut: ContainerToken = "$container";
