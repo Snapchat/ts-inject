@@ -134,7 +134,8 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
   // trigger inherited setters or shadow inherited methods through reads.
   private readonly injectables!: Injectables<Services, Dependencies>;
 
-  // Instance methods take `this: PartialContainer<S, D>` for the reason described in {@link Container}.
+  // Instance methods take `this: PartialContainer<S, D>` and keep `this`-less fallback overloads for the reasons
+  // described in {@link Container}.
   constructor(input: Injectables<Services, Dependencies>) {
     // Public construction path. Flatten the input (own + inherited) into a null-prototype-
     // rooted own-property map. Internal builders bypass this via {@link withInjectables}.
@@ -272,6 +273,50 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     container: Container<AdditionalServices>
   ): PartialContainer<AddServices<S, AdditionalServices>, ExcludeKey<D, keyof AdditionalServices>>;
 
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  provides<
+    AdditionalDependencies extends readonly any[],
+    Tokens extends readonly TokenType[],
+    Token extends TokenType,
+    Service,
+  >(
+    fn: PartialInjectableFunction<AdditionalDependencies, Tokens, Token, Service>
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof Services
+    >
+  >;
+  /** @hidden */
+  provides<Token extends TokenType, Service>(
+    token: Token,
+    fn: () => Service
+  ): PartialContainer<AddService<Services, Token, Service>, ExcludeKey<Dependencies, Token>>;
+  /** @hidden */
+  provides<Token extends TokenType, const Tokens extends readonly TokenType[], Params extends readonly any[], Service>(
+    token: Token,
+    dependencies: Tokens,
+    fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, Params>>,
+      keyof Services
+    >
+  >;
+  /** @hidden */
+  provides<AdditionalServices, AdditionalDependencies>(
+    container: PartialContainer<AdditionalServices, AdditionalDependencies>
+  ): PartialContainer<
+    AddServices<Services, AdditionalServices>,
+    ExcludeKey<AddDependencies<Dependencies, AdditionalDependencies>, keyof Services | keyof AdditionalServices>
+  >;
+  /** @hidden */
+  provides<AdditionalServices>(
+    container: Container<AdditionalServices>
+  ): PartialContainer<AddServices<Services, AdditionalServices>, ExcludeKey<Dependencies, keyof AdditionalServices>>;
+
   provides(
     first: PartialInjectableFunction<any, any, any, any> | PartialContainer<any, any> | Container<any> | TokenType,
     second?: (() => any) | readonly TokenType[],
@@ -338,7 +383,17 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     this: PartialContainer<S, D>,
     token: Token,
     value: Service
-  ) {
+  ): PartialContainer<AddService<S, Token, Service>, ExcludeKey<AddDependencies<ExcludeKey<D, Token>, {}>, keyof S>>;
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  providesValue<Token extends TokenType, Service>(
+    token: Token,
+    value: Service
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<AddDependencies<ExcludeKey<Dependencies, Token>, {}>, keyof Services>
+  >;
+
+  providesValue(token: TokenType, value: unknown): PartialContainer<any, any> {
     return this.provides(Injectable(token, [], () => value));
   }
 
@@ -409,6 +464,41 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     ExcludeKey<
       AddDependencies<ExcludeKey<D, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
       keyof S
+    >
+  >;
+
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  providesClass<
+    Class extends InjectableClass<any, any, any>,
+    AdditionalDependencies extends ConstructorParameters<Class>,
+    Tokens extends Class["dependencies"],
+    Service extends ConstructorReturnType<Class>,
+    Token extends TokenType,
+  >(
+    token: Token,
+    cls: Class
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof Services
+    >
+  >;
+  /** @hidden */
+  providesClass<
+    Class extends InjectableClass<any, any, any>,
+    AdditionalDependencies extends ConstructorParameters<Class>,
+    Tokens extends Class["dependencies"],
+    Service extends ConstructorReturnType<Class>,
+    Token extends TokenType,
+  >(
+    token: Token,
+    getClass: () => Class
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof Services
     >
   >;
 

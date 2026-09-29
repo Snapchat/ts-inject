@@ -205,8 +205,9 @@ export class Container<Services = {}> {
   // class's type arguments, once with the call's), and the second pass re-walks every `AddService` layer whenever a
   // service type is an anonymous object-literal or function type. Inferring `S` from `this` makes it a single pass,
   // so long registration chains stay within TypeScript's instantiation depth limit. `S` comes last and defaults to
-  // `Services` so callers that pass explicit type arguments keep the previous behaviour. See
-  // https://github.com/Snapchat/ts-inject/issues/27.
+  // `Services` so callers that pass explicit type arguments keep the previous behaviour, and each method keeps a
+  // fallback overload without a `this` parameter so facade types and bound references stay fully typed. A real
+  // receiver matches the `this`-typed overloads first. See https://github.com/Snapchat/ts-inject/issues/27.
   constructor(factories: MaybeMemoizedFactories<Services>) {
     // Public construction path. Flatten the input — own + inherited — into a clean
     // null-prototype-rooted own-property map, memoizing any non-memoized factories along
@@ -252,15 +253,19 @@ export class Container<Services = {}> {
    * @returns A new Container copy that shares the original's services, with specified services scoped as unique
    * instances to the new Container.
    */
-  copy<Tokens extends readonly (keyof S)[], S = Services>(this: Container<S>, scopedServices?: Tokens): Container<S> {
+  copy<Tokens extends readonly (keyof S)[], S = Services>(this: Container<S>, scopedServices?: Tokens): Container<S>;
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  copy<Tokens extends readonly (keyof Services)[]>(scopedServices?: Tokens): Container<Services>;
+
+  copy(scopedServices?: readonly (keyof Services)[]): Container<Services> {
     if (!scopedServices || scopedServices.length === 0) {
       // Share factories via prototype chain — the new container resolves to the same memoized
       // instances as the original.
-      return Container.withMemoizedFactories(Object.create(this.factoriesChain) as Factories<S>);
+      return Container.withMemoizedFactories(Object.create(this.factoriesChain) as Factories<Services>);
     }
     // Override scoped tokens with freshly-memoized copies of the original delegates so the new
     // container produces independent service instances for those tokens.
-    const factories = Object.create(this.factoriesChain) as Factories<S>;
+    const factories = Object.create(this.factoriesChain) as Factories<Services>;
     for (const token of scopedServices) {
       factories[token] = memoize(this.factoriesChain[token].delegate);
     }
@@ -284,8 +289,7 @@ export class Container<Services = {}> {
    * @returns A Service corresponding to the given Token.
    */
   get<Token extends keyof S, S = Services>(this: Container<S>, token: Token): S[Token];
-  // Without a `this` parameter, so facade types such as `Pick<Container<S>, "get">` and `container.get.bind(container)`
-  // stay callable. A real Container receiver matches the overload above first.
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
   get<Token extends keyof Services>(token: Token): Services[Token];
 
   get(token: ContainerToken | keyof Services): this | Services[keyof Services] {
@@ -394,6 +398,16 @@ export class Container<Services = {}> {
     S = Services,
     This extends Container<any> = this,
   >(this: This & Container<S>, fn: InjectableFunction<S, Tokens, Token, Service>): This;
+
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  run<AdditionalServices, Dependencies, FulfilledDependencies extends Dependencies>(
+    this: Container<FulfilledDependencies>,
+    container: PartialContainer<AdditionalServices, Dependencies>
+  ): this;
+  /** @hidden */
+  run<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service>(
+    fn: InjectableFunction<Services, Tokens, Token, Service>
+  ): this;
 
   run(fnOrContainer: any): any {
     if (fnOrContainer instanceof PartialContainer) {
@@ -509,6 +523,31 @@ export class Container<Services = {}> {
     fn: (...args: CorrespondingServices<S, Tokens> extends infer T extends readonly any[] ? T : never) => Service
   ): Container<AddService<S, Token, Service>>;
 
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  provides<AdditionalServices, Dependencies, FulfilledDependencies extends Dependencies>(
+    this: Container<FulfilledDependencies>,
+    container: PartialContainer<AdditionalServices, Dependencies>
+  ): Container<AddServices<Services, AdditionalServices>>;
+  /** @hidden */
+  provides<AdditionalServices>(
+    container: Container<AdditionalServices>
+  ): Container<AddServices<Services, AdditionalServices>>;
+  /** @hidden */
+  provides<Token extends TokenType, Tokens extends readonly ValidTokens<Services>[], Service>(
+    fn: InjectableFunction<Services, Tokens, Token, Service>
+  ): Container<AddService<Services, Token, Service>>;
+  /** @hidden */
+  provides<Token extends TokenType, Service>(
+    token: Token,
+    fn: () => Service
+  ): Container<AddService<Services, Token, Service>>;
+  /** @hidden */
+  provides<Token extends TokenType, const Tokens extends readonly ValidTokens<Services>[], Service>(
+    token: Token,
+    dependencies: Tokens,
+    fn: (...args: CorrespondingServices<Services, Tokens> extends infer T extends readonly any[] ? T : never) => Service
+  ): Container<AddService<Services, Token, Service>>;
+
   provides(first: any, second?: any, third?: any): Container<any> {
     // Two-arg form: provides(token, factory)
     if (typeof second === "function") {
@@ -571,6 +610,17 @@ export class Container<Services = {}> {
     getClass: () => InjectableClass<S, Service, Tokens>
   ): Container<AddService<S, Token, Service>>;
 
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  providesClass<Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
+    token: Token,
+    cls: InjectableClass<Services, Service, Tokens>
+  ): Container<AddService<Services, Token, Service>>;
+  /** @hidden */
+  providesClass<Token extends TokenType, Service, Tokens extends readonly ValidTokens<Services>[]>(
+    token: Token,
+    getClass: () => InjectableClass<Services, Service, Tokens>
+  ): Container<AddService<Services, Token, Service>>;
+
   providesClass(
     token: TokenType,
     clsOrProvider:
@@ -594,7 +644,14 @@ export class Container<Services = {}> {
     this: Container<S>,
     token: Token,
     value: Service
-  ): Container<AddService<S, Token, Service>> {
+  ): Container<AddService<S, Token, Service>>;
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  providesValue<Token extends TokenType, Service>(
+    token: Token,
+    value: Service
+  ): Container<AddService<Services, Token, Service>>;
+
+  providesValue(token: TokenType, value: unknown): Container<any> {
     return this.providesService(Injectable(token, [], () => value));
   }
 
@@ -618,8 +675,15 @@ export class Container<Services = {}> {
     this: Container<S>,
     token: Token,
     value: Service
-  ): Container<S> {
-    return this.providesService(ConcatInjectable(token, () => value)) as Container<S>;
+  ): Container<S>;
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  appendValue<Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
+    token: Token,
+    value: Service
+  ): Container<Services>;
+
+  appendValue(token: keyof Services, value: unknown): Container<Services> {
+    return this.providesService(ConcatInjectable(token, () => value)) as Container<Services>;
   }
 
   /**
@@ -662,6 +726,19 @@ export class Container<Services = {}> {
     Service extends ArrayElement<S[Token]>,
     S = Services,
   >(this: Container<S>, token: Token, getClass: () => InjectableClass<S, Service, Tokens>): Container<S>;
+
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  appendClass<
+    Token extends keyof Services,
+    Tokens extends readonly ValidTokens<Services>[],
+    Service extends ArrayElement<Services[Token]>,
+  >(token: Token, cls: InjectableClass<Services, Service, Tokens>): Container<Services>;
+  /** @hidden */
+  appendClass<
+    Token extends keyof Services,
+    Tokens extends readonly ValidTokens<Services>[],
+    Service extends ArrayElement<Services[Token]>,
+  >(token: Token, getClass: () => InjectableClass<Services, Service, Tokens>): Container<Services>;
 
   appendClass(
     token: keyof Services,
@@ -740,6 +817,28 @@ export class Container<Services = {}> {
     Service extends ArrayElement<S[Token]>,
     S = Services,
   >(this: Container<S>, fn: InjectableFunction<S, Tokens, Token, Service>): Container<S>;
+
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  append<Token extends keyof Services, Service extends ArrayElement<Services[Token]>>(
+    token: Token,
+    fn: () => Service
+  ): Container<Services>;
+  /** @hidden */
+  append<
+    Token extends keyof Services,
+    const Tokens extends readonly ValidTokens<Services>[],
+    Service extends ArrayElement<Services[Token]>,
+  >(
+    token: Token,
+    dependencies: Tokens,
+    fn: (...args: CorrespondingServices<Services, Tokens> extends infer T extends readonly any[] ? T : never) => Service
+  ): Container<Services>;
+  /** @hidden */
+  append<
+    Token extends keyof Services,
+    Tokens extends readonly ValidTokens<Services>[],
+    Service extends ArrayElement<Services[Token]>,
+  >(fn: InjectableFunction<Services, Tokens, Token, Service>): Container<Services>;
 
   append(first: any, second?: any, third?: any): Container<Services> {
     let token: any;

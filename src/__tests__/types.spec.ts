@@ -286,10 +286,24 @@ describe("receiver-typed methods", () => {
     expect([merged.get("len"), merged.get("extra"), ran.get("dep"), ran.get("extra")]).toEqual([3, 1, "abc", 1]);
   });
 
-  test("get is callable through a facade type and after bind", () => {
-    const facade: Pick<Container<{ dep: string }>, "get"> = container;
+  test("methods stay fully typed through facade types and after bind", () => {
+    const facade: Pick<Container<{ dep: string }>, "get" | "provides" | "providesValue"> = container;
     const bound = container.get.bind(container);
-    expect([facade.get("dep"), bound("dep")]).toEqual(["abc", "abc"]);
+    const next = container.providesValue.bind(container)("z", 1);
+    const viaFacade = facade.provides("w", () => true);
+    const z: number = next.get("z");
+    const w: boolean = viaFacade.get("w");
+    expect(() =>
+      // @ts-expect-error a bound method keeps the registered tokens
+      next.get("tpyo")
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error a facade call keeps the registered tokens
+      viaFacade.get("tpyo")
+    ).toThrow();
+    const boundPartial = partial.providesValue.bind(partial)("q", 1);
+    const q: number = container.provides(boundPartial).get("q");
+    expect([facade.get("dep"), bound("dep"), z, w, q]).toEqual(["abc", "abc", 1, true, 1]);
   });
 
   test("run returns the receiver's own type", () => {
