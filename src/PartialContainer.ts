@@ -14,23 +14,34 @@ import type {
 import type { ConstructorReturnType, ParamCountMismatch } from "./Injectable";
 import { ClassInjectable, Injectable } from "./Injectable";
 
-// Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
-// will see the mapped type instead of the AddDependencies type alias. This produces better hints.
-type AddDependencies<ParentDependencies, Dependencies> = ParentDependencies extends any
-  ? // A mapped type produces better, more concise type hints than an intersection type.
-    {
-      [K in keyof ParentDependencies | keyof Dependencies]: K extends keyof ParentDependencies
-        ? K extends keyof Dependencies
-          ? // Both sides depend on this token: the provided service must satisfy both.
-            ParentDependencies[K] & Dependencies[K]
-          : ParentDependencies[K]
-        : K extends keyof Dependencies
-          ? Dependencies[K]
-          : never;
-    }
+// The check types index into the operands for the same reason as `AddService` in types.ts: every `provides()` wraps
+// the previous Dependencies in these aliases, and without eager resolution a long chain exceeds TypeScript's
+// instantiation depth limit when the dependencies are finally compared against a Container.
+type AddDependencies<ParentDependencies, Dependencies> = ParentDependencies extends unknown
+  ? Dependencies extends unknown
+    ? [ParentDependencies[keyof ParentDependencies]] extends [unknown]
+      ? [Dependencies[keyof Dependencies]] extends [unknown]
+        ? // A mapped type produces better, more concise type hints than an intersection type.
+          {
+            [K in keyof ParentDependencies | keyof Dependencies]: K extends keyof ParentDependencies
+              ? K extends keyof Dependencies
+                ? // Both sides depend on this token: the provided service must satisfy both.
+                  ParentDependencies[K] & Dependencies[K]
+                : ParentDependencies[K]
+              : K extends keyof Dependencies
+                ? Dependencies[K]
+                : never;
+          }
+        : never
+      : never
+    : never
   : never;
 
-type ExcludeKey<T, U> = T extends any ? { [K in Exclude<keyof T, U>]: T[K] } : never;
+type ExcludeKey<T, U> = T extends unknown
+  ? [T[keyof T]] extends [unknown]
+    ? { [K in Exclude<keyof T, U>]: T[K] }
+    : never
+  : never;
 
 type PartialInjectableFunction<
   Params extends readonly any[],
@@ -123,6 +134,8 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
   // trigger inherited setters or shadow inherited methods through reads.
   private readonly injectables!: Injectables<Services, Dependencies>;
 
+  // Instance methods take `this: PartialContainer<S, D>` and keep `this`-less fallback overloads for the reasons
+  // described in {@link Container}.
   constructor(input: Injectables<Services, Dependencies>) {
     // Public construction path. Flatten the input (own + inherited) into a null-prototype-
     // rooted own-property map. Internal builders bypass this via {@link withInjectables}.
@@ -146,16 +159,19 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     Tokens extends readonly TokenType[],
     Token extends TokenType,
     Service,
+    S = Services,
+    D = Dependencies,
   >(
+    this: PartialContainer<S, D>,
     fn: PartialInjectableFunction<AdditionalDependencies, Tokens, Token, Service>
   ): PartialContainer<
-    AddService<Services, Token, Service>,
+    AddService<S, Token, Service>,
     // The dependencies of the new PartialContainer are the combined dependencies of this container and the
     // PartialInjectableFunction -- but we exclude any dependencies already provided by this container (i.e. this
     // container's Services) as well as the new Service being provided.
     ExcludeKey<
-      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
-      keyof Services
+      AddDependencies<ExcludeKey<D, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof S
     >
   >;
 
@@ -171,10 +187,11 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param token A unique Token identifying the service.
    * @param fn A zero-argument factory function that creates the service.
    */
-  provides<Token extends TokenType, Service>(
+  provides<Token extends TokenType, Service, S = Services, D = Dependencies>(
+    this: PartialContainer<S, D>,
     token: Token,
     fn: () => Service
-  ): PartialContainer<AddService<Services, Token, Service>, ExcludeKey<Dependencies, Token>>;
+  ): PartialContainer<AddService<S, Token, Service>, ExcludeKey<D, Token>>;
 
   /**
    * Create a new PartialContainer which provides a Service created by a factory function with dependencies.
@@ -194,16 +211,21 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param dependencies A readonly array of tokens for the factory's dependencies.
    * @param fn A factory function whose parameters match the dependencies.
    */
-  provides<Token extends TokenType, const Tokens extends readonly TokenType[], Params extends readonly any[], Service>(
+  provides<
+    Token extends TokenType,
+    const Tokens extends readonly TokenType[],
+    Params extends readonly any[],
+    Service,
+    S = Services,
+    D = Dependencies,
+  >(
+    this: PartialContainer<S, D>,
     token: Token,
     dependencies: Tokens,
     fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
   ): PartialContainer<
-    AddService<Services, Token, Service>,
-    ExcludeKey<
-      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, Params>>,
-      keyof Services
-    >
+    AddService<S, Token, Service>,
+    ExcludeKey<AddDependencies<ExcludeKey<D, Token>, ServicesFromTokenizedParams<Tokens, Params>>, keyof S>
   >;
 
   /**
@@ -223,11 +245,12 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    *
    * @param container The PartialContainer whose services will be merged.
    */
-  provides<AdditionalServices, AdditionalDependencies>(
+  provides<AdditionalServices, AdditionalDependencies, S = Services, D = Dependencies>(
+    this: PartialContainer<S, D>,
     container: PartialContainer<AdditionalServices, AdditionalDependencies>
   ): PartialContainer<
-    AddServices<Services, AdditionalServices>,
-    ExcludeKey<AddDependencies<Dependencies, AdditionalDependencies>, keyof Services | keyof AdditionalServices>
+    AddServices<S, AdditionalServices>,
+    ExcludeKey<AddDependencies<D, AdditionalDependencies>, keyof S | keyof AdditionalServices>
   >;
 
   /**
@@ -245,6 +268,51 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    *
    * @param container The Container whose services will be merged.
    */
+  provides<AdditionalServices, S = Services, D = Dependencies>(
+    this: PartialContainer<S, D>,
+    container: Container<AdditionalServices>
+  ): PartialContainer<AddServices<S, AdditionalServices>, ExcludeKey<D, keyof AdditionalServices>>;
+
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  provides<
+    AdditionalDependencies extends readonly any[],
+    Tokens extends readonly TokenType[],
+    Token extends TokenType,
+    Service,
+  >(
+    fn: PartialInjectableFunction<AdditionalDependencies, Tokens, Token, Service>
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof Services
+    >
+  >;
+  /** @hidden */
+  provides<Token extends TokenType, Service>(
+    token: Token,
+    fn: () => Service
+  ): PartialContainer<AddService<Services, Token, Service>, ExcludeKey<Dependencies, Token>>;
+  /** @hidden */
+  provides<Token extends TokenType, const Tokens extends readonly TokenType[], Params extends readonly any[], Service>(
+    token: Token,
+    dependencies: Tokens,
+    fn: (...args: Tokens["length"] extends Params["length"] ? Params : ParamCountMismatch[]) => Service
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, Params>>,
+      keyof Services
+    >
+  >;
+  /** @hidden */
+  provides<AdditionalServices, AdditionalDependencies>(
+    container: PartialContainer<AdditionalServices, AdditionalDependencies>
+  ): PartialContainer<
+    AddServices<Services, AdditionalServices>,
+    ExcludeKey<AddDependencies<Dependencies, AdditionalDependencies>, keyof Services | keyof AdditionalServices>
+  >;
+  /** @hidden */
   provides<AdditionalServices>(
     container: Container<AdditionalServices>
   ): PartialContainer<AddServices<Services, AdditionalServices>, ExcludeKey<Dependencies, keyof AdditionalServices>>;
@@ -311,7 +379,21 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param token the Token by which the value will be known.
    * @param value the value to be provided.
    */
-  providesValue<Token extends TokenType, Service>(token: Token, value: Service) {
+  providesValue<Token extends TokenType, Service, S = Services, D = Dependencies>(
+    this: PartialContainer<S, D>,
+    token: Token,
+    value: Service
+  ): PartialContainer<AddService<S, Token, Service>, ExcludeKey<AddDependencies<ExcludeKey<D, Token>, {}>, keyof S>>;
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  providesValue<Token extends TokenType, Service>(
+    token: Token,
+    value: Service
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<AddDependencies<ExcludeKey<Dependencies, Token>, {}>, keyof Services>
+  >;
+
+  providesValue(token: TokenType, value: unknown): PartialContainer<any, any> {
     return this.provides(Injectable(token, [], () => value));
   }
 
@@ -340,14 +422,17 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
     Tokens extends Class["dependencies"],
     Service extends ConstructorReturnType<Class>,
     Token extends TokenType,
+    S = Services,
+    D = Dependencies,
   >(
+    this: PartialContainer<S, D>,
     token: Token,
     cls: Class
   ): PartialContainer<
-    AddService<Services, Token, Service>,
+    AddService<S, Token, Service>,
     ExcludeKey<
-      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
-      keyof Services
+      AddDependencies<ExcludeKey<D, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof S
     >
   >;
 
@@ -362,6 +447,44 @@ export class PartialContainer<Services = {}, Dependencies = {}> {
    * @param token the Token by which the class will be known.
    * @param getClass a zero-argument function returning the class to instantiate.
    */
+  providesClass<
+    Class extends InjectableClass<any, any, any>,
+    AdditionalDependencies extends ConstructorParameters<Class>,
+    Tokens extends Class["dependencies"],
+    Service extends ConstructorReturnType<Class>,
+    Token extends TokenType,
+    S = Services,
+    D = Dependencies,
+  >(
+    this: PartialContainer<S, D>,
+    token: Token,
+    getClass: () => Class
+  ): PartialContainer<
+    AddService<S, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<D, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof S
+    >
+  >;
+
+  /** @hidden Same signature without a `this` parameter, so facade types and bound references stay fully typed. */
+  providesClass<
+    Class extends InjectableClass<any, any, any>,
+    AdditionalDependencies extends ConstructorParameters<Class>,
+    Tokens extends Class["dependencies"],
+    Service extends ConstructorReturnType<Class>,
+    Token extends TokenType,
+  >(
+    token: Token,
+    cls: Class
+  ): PartialContainer<
+    AddService<Services, Token, Service>,
+    ExcludeKey<
+      AddDependencies<ExcludeKey<Dependencies, Token>, ServicesFromTokenizedParams<Tokens, AdditionalDependencies>>,
+      keyof Services
+    >
+  >;
+  /** @hidden */
   providesClass<
     Class extends InjectableClass<any, any, any>,
     AdditionalDependencies extends ConstructorParameters<Class>,

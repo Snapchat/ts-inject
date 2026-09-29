@@ -36,12 +36,17 @@ export type CorrespondingServices<Services, Tokens extends readonly ValidTokens<
  * A `InjectableFunction` also includes its own key Token and dependency Tokens as metadata, so it may be resolved by
  * Container<Services> later.
  */
-export type InjectableFunction<
-  Services,
-  Tokens,
-  Token extends TokenType,
-  Service,
-> = Tokens extends readonly ValidTokens<Services>[]
+// `"$container" | keyof Services` is spelled out instead of `ValidTokens<Services>` on purpose, and the literal can't
+// be replaced with `typeof CONTAINER` or `ContainerToken` either. Inside a type alias, TypeScript defers an array type
+// whose element has to be looked up (through another alias or a `typeof` query), and re-instantiates it together with
+// the alias's outer type arguments every time this conditional is evaluated. When Services is a long chain that
+// contains an anonymous object-literal or function type, that re-walks every layer and exceeds the instantiation depth
+// limit (see AddService). With a literal element type the array is resolved once. Kept in sync with CONTAINER by a
+// test in types.spec.ts.
+export type InjectableFunction<Services, Tokens, Token extends TokenType, Service> = Tokens extends readonly (
+  | "$container"
+  | keyof Services
+)[]
   ? {
       (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
       token: Token;
@@ -54,7 +59,8 @@ export type InjectableFunction<
  * The `InjectableClass` type ensures that the class's dependencies and constructor signature align with
  * the services available in the container, providing strong type safety.
  */
-export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly ValidTokens<Services>[]
+// See InjectableFunction for why the element type is spelled out.
+export type InjectableClass<Services, Service, Tokens> = Tokens extends readonly ("$container" | keyof Services)[]
   ? {
       readonly dependencies: Tokens;
       new (...args: AsTuple<CorrespondingServices<Services, Tokens>>): Service;
@@ -108,33 +114,42 @@ export type ServicesFromInjectables<Injectables extends readonly AnyInjectable[]
 /**
  * Add a Service with a Token to an existing set of Services.
  */
-// Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
-// will see the mapped type instead of the AddService type alias. This produces better hints.
-export type AddService<ParentServices, Token extends TokenType, Service> = ParentServices extends any
-  ? // A mapped type produces better, more concise type hints than an intersection type.
-    {
-      [K in keyof ParentServices | Token]: K extends keyof ParentServices
-        ? K extends Token
-          ? Service
-          : ParentServices[K]
-        : Service;
-    }
+// The outer conditional keeps the alias distributive over union Services (each member gets the new token). The inner
+// one does two jobs. It forces TS language services to evaluate the type, so type hints show the
+// mapped type instead of the AddService alias. And indexing `ParentServices[keyof ParentServices]` in the check type
+// makes TS resolve every property of the parent eagerly. Without that, each layer's properties are resolved lazily
+// through the layer below, so a chain of ~50 registrations exceeds TS's instantiation depth limit (TS2589) the first
+// time a service is read.
+export type AddService<ParentServices, Token extends TokenType, Service> = ParentServices extends unknown
+  ? [ParentServices[keyof ParentServices]] extends [unknown]
+    ? // A mapped type produces better, more concise type hints than an intersection type.
+      {
+        [K in keyof ParentServices | Token]: K extends keyof ParentServices
+          ? K extends Token
+            ? Service
+            : ParentServices[K]
+          : Service;
+      }
+    : never
   : never;
 
 /**
  * Same as AddService above, but is merging multiple services at once. Services types override those of the parent.
  */
-// Using a conditional type forces TS language services to evaluate the type -- so when showing e.g. type hints, we
-// will see the mapped type instead of the AddService type alias. This produces better hints.
-export type AddServices<ParentServices, Services> = ParentServices extends any
-  ? Services extends any
-    ? {
-        [K in keyof Services | keyof ParentServices]: K extends keyof Services
-          ? Services[K]
-          : K extends keyof ParentServices
-            ? ParentServices[K]
-            : never;
-      }
+// See AddService for why the check types index into the parent and incoming services.
+export type AddServices<ParentServices, Services> = ParentServices extends unknown
+  ? Services extends unknown
+    ? [ParentServices[keyof ParentServices]] extends [unknown]
+      ? [Services[keyof Services]] extends [unknown]
+        ? {
+            [K in keyof Services | keyof ParentServices]: K extends keyof Services
+              ? Services[K]
+              : K extends keyof ParentServices
+                ? ParentServices[K]
+                : never;
+          }
+        : never
+      : never
     : never
   : never;
 

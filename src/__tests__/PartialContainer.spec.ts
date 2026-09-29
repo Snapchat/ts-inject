@@ -220,6 +220,43 @@ describe("PartialContainer", () => {
       // @ts-expect-error "Doubled" expects a number, but "dep" is provided as a string
       Container.providesValue("dep", "hello").provides(merged);
     });
+
+    test("keeps dependency unions distributive", () => {
+      const partial = new PartialContainer({}).provides(
+        "Size",
+        ["dep"] as const,
+        (dep: string) => dep.length
+      ) as unknown as PartialContainer<{ Size: number }, { dep: string } | { other: number }>;
+      // @ts-expect-error neither "dep" nor "other" is provided
+      Container.fromObject({}).provides(partial.providesValue("z", 1));
+    });
+
+    test("keeps service unions distributive", () => {
+      type Shaped = Container<{ kind: "a"; a: number } | { kind: "b"; b: string }>;
+      const extended = (c: Shaped) => c.providesValue("z", 1);
+      type Extended = ReturnType<typeof extended>;
+      const members: Extended extends Container<infer S> ? S : never = { kind: "b", b: "x", z: 1 };
+      expect(members.z).toBe(1);
+    });
+
+    test("keeps service unions distributive when merging containers", () => {
+      type Shaped = Container<{ kind: "a"; a: number } | { kind: "b"; b: string }>;
+      const merged = (c: Shaped) => c.provides(Container.providesValue("z", 1));
+      type Merged = ReturnType<typeof merged>;
+      const members: Merged extends Container<infer S> ? S : never = { kind: "a", a: 1, z: 1 };
+      expect(members.z).toBe(1);
+    });
+
+    test("keeps dependency unions distributive when merging partials", () => {
+      const left = new PartialContainer({}) as unknown as PartialContainer<
+        { x: number },
+        { d: number } | { e: string }
+      >;
+      const right = new PartialContainer({}).provides("y", ["f"] as const, (f: boolean) => f);
+      const merged = left.provides(right);
+      // @ts-expect-error providing only "f" satisfies neither "d" nor "e"
+      Container.providesValue("f", true).provides(merged);
+    });
   });
 
   test("type error targets factory when arity doesn't match deps", () => {

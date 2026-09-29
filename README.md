@@ -8,7 +8,7 @@
 
 While [typed-inject](https://github.com/nicojs/typed-inject) also prioritizes typesafety, it lacks several key features that `ts-inject` offers:
 
-- **Overcomes TypeScript Nested Type Limitations**: Unlike some frameworks, `ts-inject` navigates around [TypeScript's limits on nested types](https://github.com/nicojs/typed-inject/issues/22), making it more robust for complex applications.
+- **Overcomes TypeScript Nested Type Limitations**: Unlike some frameworks, `ts-inject` navigates around [TypeScript's limits on nested types](https://github.com/nicojs/typed-inject/issues/22), making it more robust for complex applications. Chains of several hundred registrations type-check in about a second. On TypeScript 5.5 through 5.8, a chain that includes a service typed as an anonymous object literal or function still stops at roughly 100 registrations after that service; TypeScript 5.9 removes that cap.
 - **Composable Containers**: `ts-inject` enables merging multiple containers, facilitating greater modularity and code reuse.
 - **PartialContainer**: It allows service registration without pre-defined dependencies, offering more flexibility compared to regular containers.
 
