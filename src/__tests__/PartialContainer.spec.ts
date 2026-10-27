@@ -429,4 +429,26 @@ describe("PartialContainer", () => {
       expect(container.get("__proto__")).toBe(1);
     });
   });
+
+  describe("symbol token handling", () => {
+    test("preserves Symbol-keyed services when providing PartialContainer to Container", () => {
+      const serviceToken = Symbol("partialService");
+      const partial = new PartialContainer({}).providesValue(serviceToken, "symbolValue");
+      expect(partial.getTokens()).toContain(serviceToken);
+      const c = Container.provides(partial);
+      expect(c.get(serviceToken)).toBe("symbolValue");
+    });
+
+    test("ignores non-enumerable keys such as __esModule or Symbol.toStringTag", () => {
+      const target: Record<string | symbol, any> = {
+        validService: "serviceValue",
+      };
+      Object.defineProperty(target, "__esModule", { value: true, enumerable: false });
+      Object.defineProperty(target, Symbol.toStringTag, { value: "Module", enumerable: false });
+      const partial = new PartialContainer(target as any);
+      expect(partial.getTokens()).toEqual(["validService"]);
+      expect(partial.getTokens()).not.toContain("__esModule");
+      expect(partial.getTokens()).not.toContain(Symbol.toStringTag);
+    });
+  });
 });

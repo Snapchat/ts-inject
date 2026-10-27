@@ -569,6 +569,25 @@ describe("Container", () => {
       // Non-scoped, inherited services still share memoization with the original.
       expect(copy.get("tail10")).toBe(c.get("tail10"));
     });
+
+    test("preserves Symbol-keyed services across copy", () => {
+      const serviceToken = Symbol("serviceToken");
+      const c1 = Container.providesValue(serviceToken, "testValue");
+      const c2 = c1.copy();
+      expect(c2.get(serviceToken)).toBe("testValue");
+    });
+
+    test("resolves Symbol-keyed services directly through get() and as dependencies", () => {
+      const symA = Symbol("symA");
+      const symB = Symbol("symB");
+      const c = Container.providesValue(symA, "valueA").provides(
+        symB,
+        [symA] as const,
+        (valA: string) => ({ valA })
+      );
+      expect(c.get(symA)).toBe("valueA");
+      expect(c.get(symB)).toEqual({ valA: "valueA" });
+    });
   });
 
   describe("when running a Service", () => {
