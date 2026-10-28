@@ -580,11 +580,7 @@ describe("Container", () => {
     test("resolves Symbol-keyed services directly through get() and as dependencies", () => {
       const symA = Symbol("symA");
       const symB = Symbol("symB");
-      const c = Container.providesValue(symA, "valueA").provides(
-        symB,
-        [symA] as const,
-        (valA: string) => ({ valA })
-      );
+      const c = Container.providesValue(symA, "valueA").provides(symB, [symA] as const, (valA: string) => ({ valA }));
       expect(c.get(symA)).toBe("valueA");
       expect(c.get(symB)).toEqual({ valA: "valueA" });
     });
