@@ -215,7 +215,7 @@ export class Container<Services = {}> {
     // can guarantee the input is already memoized.
     const root = Object.create(null) as Factories<Services>;
     chainedForEach<(() => unknown) | Memoized<() => unknown>>(factories, (k, fn) => {
-      (root as Record<string, Memoized<() => unknown>>)[k] = isMemoized(fn) ? fn : memoize(fn);
+      (root as Record<string | symbol, Memoized<() => unknown>>)[k] = isMemoized(fn) ? fn : memoize(fn);
     });
     (this as unknown as { factoriesChain: Factories<Services> }).factoriesChain = root;
   }
@@ -325,7 +325,7 @@ export class Container<Services = {}> {
       // direct call both end up routing through `self`.
       const bound = (() => v.call(self)) as Memoized<() => unknown>;
       bound.delegate = v.delegate;
-      (flat as Record<string, Memoized<() => unknown>>)[k] = bound;
+      (flat as Record<string | symbol, Memoized<() => unknown>>)[k] = bound;
     });
     return flat;
   }
